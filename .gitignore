@@ -1,0 +1,35 @@
+# 依赖
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# 构建产物
+client/dist/
+server/dist/
+
+# 数据库文件（本地数据，不纳入版本管理）
+server/data/*.db
+
+# 环境变量（含 API Key，严禁提交）
+.env
+server/.env
+client/.env
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# 日志
+*.log
+npm-debug.log*
+
+# TypeScript 增量构建缓存
+*.tsbuildinfo

@@ -1,0 +1,27 @@
+{
+  "name": "travel-planner",
+  "version": "1.0.0",
+  "description": "活泼多彩的个人旅行 / 差旅 / 周末出行行程规划与记录全栈应用",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "dev": "concurrently -n SERVER,CLIENT -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "db:setup": "npm --prefix server run db:seed",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [
+    "travel",
+    "itinerary",
+    "planner",
+    "react",
+    "express",
+    "prisma"
+  ],
+  "license": "MIT"
+}

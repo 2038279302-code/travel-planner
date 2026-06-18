@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(160deg, #fff5f9 0%, #f3f0ff 45%, #eefbff 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  color: #2d2d3a;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(160, 140, 209, 0.4);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .card {
+    @apply bg-white/80 backdrop-blur rounded-3xl shadow-soft border border-white/60;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-2xl text-white font-medium
+      bg-gradient-to-r from-brand-pink to-brand-orange shadow-glow
+      transition-transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:hover:translate-y-0;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-2xl font-medium
+      bg-white/70 text-gray-600 border border-gray-200 transition-colors hover:bg-white hover:text-brand-pink;
+  }
+  .input {
+    @apply w-full px-4 py-2.5 rounded-2xl border border-gray-200 bg-white/80
+      outline-none transition-shadow focus:ring-2 focus:ring-brand-pink/40 focus:border-brand-pink/50;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium;
+  }
+}
