@@ -3,10 +3,13 @@
 一款活泼多彩的**个人旅行 / 差旅 / 周末出行**行程规划与记录全栈网页应用。
 支持行程规划、每日安排、预算花销管理、旅行手账记录，并内置 **AI 行程推荐** 与 **灵感发现**（小红书风格）功能。
 
+🌐 **在线体验** → [https://laudable-acceptance-production-182e.up.railway.app](https://laudable-acceptance-production-182e.up.railway.app)
+
 ![tech](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![tech](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![tech](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
 ![tech](https://img.shields.io/badge/SQLite-sql.js-003B57?logo=sqlite&logoColor=white)
+![deploy](https://img.shields.io/badge/Deployed%20on-Railway-7B2FBE?logo=railway&logoColor=white)
 
 ---
 
@@ -116,6 +119,38 @@ npm run dev
 | `npm run dev:server` | 仅启动后端 |
 | `npm run dev:client` | 仅启动前端 |
 | `npm run build` | 构建前端生产包 |
+
+---
+
+## ☁️ Railway 云端部署
+
+本项目已部署在 [Railway](https://railway.app)，采用**全栈单服务**方式：Express 后端在生产环境同时托管前端构建产物（`server/public`），只需一个服务即可运行。
+
+### 部署架构
+
+```
+Railway 单服务
+└── Docker 容器
+    ├── 构建阶段：npm install + vite build + tsc
+    └── 运行阶段：node server/dist/index.js
+        ├── GET  /api/*         → Express API 路由
+        └── GET  /*             → 托管 server/public（前端 SPA）
+```
+
+### 重新部署步骤
+
+```bash
+# 安装 Railway CLI（首次）
+curl -fsSL https://railway.app/install.sh | sh
+
+# 登录
+railway login
+
+# 部署（在项目根目录）
+railway up
+```
+
+> 每次推送代码后运行 `railway up` 即可更新线上版本。
 
 ---
 
