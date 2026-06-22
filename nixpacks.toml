@@ -1,0 +1,16 @@
+[phases.setup]
+
+[phases.install]
+cmds = [
+  "npm --prefix client install",
+  "npm --prefix server install",
+]
+
+[phases.build]
+cmds = [
+  "npm --prefix client run build",
+  "npm --prefix server run build",
+]
+
+[phases.start]
+cmd = "node server/dist/index.js"
