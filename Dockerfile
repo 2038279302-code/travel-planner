@@ -2,22 +2,19 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# 配置 npm 使用公共镜像源
-RUN npm config set registry https://registry.npmmirror.com
-
 # 1. 安装前端依赖
 COPY client/package.json client/package-lock.json ./client/
-RUN cd client && npm install --omit=dev
+RUN cd client && npm ci
 
 # 2. 安装后端依赖
 COPY server/package.json server/package-lock.json ./server/
-RUN cd server && npm install --omit=dev
+RUN cd server && npm ci
 
-# 3. 构建前端（需要完整依赖，先装全部依赖再构建）
+# 3. 构建前端（需要 devDependencies 中的 tsc/vite 等）
 COPY client/ ./client/
 RUN cd client && npm install && npm run build
 
-# 4. 构建后端
+# 4. 构建后端（需要 devDependencies 中的 tsc 等）
 COPY server/ ./server/
 RUN cd server && npm install && npm run build
 
