@@ -32,13 +32,17 @@ app.use('/api/ai', aiRouter);
 
 // 生产环境：托管前端构建产物
 if (isProd) {
-  const clientDist = path.resolve(process.cwd(), 'public');
+  // __dirname 是 server/dist，public 在 server/public，所以往上一级再进 public
+  const clientDist = path.resolve(__dirname, '..', 'public');
   if (fs.existsSync(clientDist)) {
     app.use(express.static(clientDist));
     // SPA 回退：所有非 /api 路由都返回 index.html
     app.get('*', (_req, res) => {
       res.sendFile(path.join(clientDist, 'index.html'));
     });
+  } else {
+    // 打印路径方便调试
+    console.warn(`[WARN] 前端静态文件目录不存在: ${clientDist}`);
   }
 } else {
   // 开发环境 404
