@@ -13,6 +13,35 @@
 
 ---
 
+## 📸 界面预览
+
+### 🏠 旅行仪表盘
+> 一览旅行总数、去过城市、累计花费，卡片墙展示所有旅程
+
+![仪表盘](docs/screenshots/01-dashboard.png)
+
+### 📅 旅行详情 · 每日规划
+> 按天安排行程，景点/餐饮/交通/住宿分类展示，支持一键打卡完成
+
+![旅行详情](docs/screenshots/02-trip-detail.png)
+
+### 💸 预算花销
+> 预算 vs 实际花费对比，剩余额度实时显示
+
+![预算花销](docs/screenshots/03-budget.png)
+
+### 🤖 AI 行程规划
+> 输入目的地、天数和偏好，一键生成完整行程方案
+
+![AI规划](docs/screenshots/04-ai-planner.png)
+
+### 🔥 灵感发现
+> 小红书风格瀑布流，收藏目的地灵感，支持关键词搜索
+
+![灵感发现](docs/screenshots/05-discover.png)
+
+---
+
 ## ✨ 功能特性
 
 | 模块 | 说明 |
