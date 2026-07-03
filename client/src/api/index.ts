@@ -7,6 +7,7 @@ import type {
   Note,
   Stats,
   AiRecommendResult,
+  AiDayPlan,
   InspirationCard,
 } from '../types';
 
@@ -62,6 +63,15 @@ export const AiApi = {
     preferences?: string;
     budget?: number;
   }) => api.post<AiRecommendResult>('/ai/recommend', data).then((r) => r.data),
+  regenerateDay: (data: {
+    destination: string;
+    type: string;
+    day: number;
+    totalDays: number;
+    instruction: string;
+    otherDaysDigest?: string[];
+    budget?: number;
+  }) => api.post<AiDayPlan>('/ai/regenerate-day', data).then((r) => r.data),
   inspirations: (keyword?: string) =>
     api
       .get<{ source: string; cards: InspirationCard[] }>('/ai/inspirations', {

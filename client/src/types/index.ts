@@ -89,7 +89,7 @@ export interface Stats {
 export interface AiDayPlan {
   day: number;
   theme: string;
-  items: { time: string; title: string; category: string; note: string }[];
+  items: { time: string; title: string; category: string; note: string; cost: number }[];
 }
 
 export interface AiRecommendResult {
@@ -98,6 +98,7 @@ export interface AiRecommendResult {
   tips: string[];
   days: AiDayPlan[];
   source: 'ai' | 'mock';
+  estimatedTotalCost: number;
 }
 
 export interface InspirationCard {

@@ -4,6 +4,14 @@ import type { AiRecommendResult, TripType, ActivityCategory } from '../types';
 import { AiApi, TripApi, ActivityApi } from '../api';
 import { useStore } from '../store/useStore';
 import { TRIP_TYPE, ACTIVITY_CATEGORY, COVER_EMOJIS, COVER_COLORS } from '../utils/constants';
+import { fmtMoney } from '../utils/format';
+
+// 局部重新生成的预设调整指令
+const REGEN_PRESETS = [
+  { label: '🔄 换一换', instruction: '这天全部换一批不一样的安排' },
+  { label: '🍃 更轻松', instruction: '这天的安排更轻松、慢节奏一点，少走一些路' },
+  { label: '🍜 多点美食', instruction: '这天多安排一些当地美食体验' },
+];
 
 export default function AiPlanner() {
   const navigate = useNavigate();
@@ -16,6 +24,10 @@ export default function AiPlanner() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<AiRecommendResult | null>(null);
+  // 正在重新生成的天数（用于按钮 loading 态），null 表示当前没有在重新生成
+  const [regenDay, setRegenDay] = useState<number | null>(null);
+  // 每天自定义调整指令的输入框内容
+  const [customInstruction, setCustomInstruction] = useState<Record<number, string>>({});
 
   const generate = async () => {
     if (!destination.trim()) {
@@ -57,7 +69,8 @@ export default function AiPlanner() {
         description: result.summary,
         startDate: start.toISOString(),
         endDate: end.toISOString(),
-        budget: budget ? Number(budget) : 0,
+        // 用户未填预算参考时，用 AI 预估总花费兜底，避免预算页出现"0 预算"的失真状态
+        budget: budget ? Number(budget) : result.estimatedTotalCost,
         status: 'planning',
         coverColor: COVER_COLORS[Math.floor(Math.random() * COVER_COLORS.length)],
         coverEmoji: COVER_EMOJIS[Math.floor(Math.random() * COVER_EMOJIS.length)],
@@ -78,6 +91,7 @@ export default function AiPlanner() {
             title: item.title,
             category: cat,
             note: item.note,
+            cost: item.cost || 0,
             order: i,
           });
         }
@@ -88,6 +102,45 @@ export default function AiPlanner() {
       toast('保存失败，请重试', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 局部重新生成某一天：instruction 为"换一换/更轻松/多点美食"或自定义指令
+  const regenerate = async (dayNum: number, instruction: string) => {
+    if (!result || !instruction.trim()) return;
+    setRegenDay(dayNum);
+    try {
+      const otherDaysDigest = result.days
+        .filter((d) => d.day !== dayNum)
+        .map((d) => `Day${d.day} ${d.theme}：${d.items.map((it) => it.title).join('、')}`);
+
+      const newDay = await AiApi.regenerateDay({
+        destination: result.destination,
+        type,
+        day: dayNum,
+        totalDays: result.days.length,
+        instruction: instruction.trim(),
+        otherDaysDigest,
+        budget: budget ? Number(budget) : undefined,
+      });
+
+      setResult((prev) => {
+        if (!prev) return prev;
+        const newDays = prev.days.map((d) => (d.day === dayNum ? newDay : d));
+        return {
+          ...prev,
+          days: newDays,
+          estimatedTotalCost: newDays.reduce(
+            (total, d) => total + d.items.reduce((s, it) => s + (it.cost || 0), 0),
+            0
+          ),
+        };
+      });
+      toast(`Day ${dayNum} 已重新安排 ✨`);
+    } catch {
+      toast('重新生成失败，请稍后再试', 'error');
+    } finally {
+      setRegenDay(null);
     }
   };
 
@@ -197,6 +250,16 @@ export default function AiPlanner() {
               </div>
             </div>
             <p className="text-gray-500 mt-2">{result.summary}</p>
+            <div className="mt-4 flex items-center gap-2 flex-wrap">
+              <span className="chip bg-brand-pink/10 text-brand-pink font-semibold">
+                💰 预估总花费 {fmtMoney(result.estimatedTotalCost)}
+              </span>
+              {!!budget && (
+                <span className="text-xs text-gray-400">
+                  （你的预算参考：{fmtMoney(Number(budget))}）
+                </span>
+              )}
+            </div>
             {result.tips.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {result.tips.map((t, i) => (
@@ -206,36 +269,83 @@ export default function AiPlanner() {
             )}
           </div>
 
-          {result.days.map((d) => (
-            <div key={d.day} className="card p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-9 h-9 rounded-2xl bg-gradient-to-br from-brand-purple to-brand-blue text-white flex items-center justify-center font-bold text-sm">
-                  D{d.day}
-                </span>
-                <h3 className="font-bold text-gray-800">{d.theme}</h3>
-              </div>
-              <div className="space-y-2">
-                {d.items.map((item, i) => {
-                  const cat = (ACTIVITY_CATEGORY as any)[item.category] ?? ACTIVITY_CATEGORY.other;
-                  return (
-                    <div key={i} className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-gray-50">
-                      <span className="text-sm font-mono text-brand-pink w-12 shrink-0">{item.time}</span>
-                      <span
-                        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ background: cat.color + '22' }}
-                      >
-                        {cat.emoji}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="font-medium text-gray-800">{item.title}</div>
-                        <div className="text-xs text-gray-400">{item.note}</div>
+          {result.days.map((d) => {
+            const dayCost = d.items.reduce((s, it) => s + (it.cost || 0), 0);
+            return (
+              <div key={d.day} className="card p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-9 h-9 rounded-2xl bg-gradient-to-br from-brand-purple to-brand-blue text-white flex items-center justify-center font-bold text-sm">
+                      D{d.day}
+                    </span>
+                    <h3 className="font-bold text-gray-800">{d.theme}</h3>
+                  </div>
+                  <span className="text-xs font-medium text-gray-400">当日约 {fmtMoney(dayCost)}</span>
+                </div>
+
+                {/* 局部重新生成操作栏 */}
+                <div className="flex flex-wrap items-center gap-2 mb-3 pb-3 border-b border-gray-100">
+                  {REGEN_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      className="chip bg-gray-100 text-gray-500 text-xs hover:bg-gray-200 disabled:opacity-50"
+                      disabled={regenDay !== null}
+                      onClick={() => regenerate(d.day, preset.instruction)}
+                    >
+                      {regenDay === d.day ? '✨ 生成中…' : preset.label}
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1.5 flex-1 min-w-[180px]">
+                    <input
+                      className="input text-xs py-1.5 flex-1"
+                      placeholder="或输入自定义调整，如：换成室内活动"
+                      value={customInstruction[d.day] ?? ''}
+                      onChange={(e) =>
+                        setCustomInstruction((prev) => ({ ...prev, [d.day]: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') regenerate(d.day, customInstruction[d.day] ?? '');
+                      }}
+                      disabled={regenDay !== null}
+                    />
+                    <button
+                      className="chip bg-brand-purple/10 text-brand-purple text-xs shrink-0 disabled:opacity-50"
+                      disabled={regenDay !== null || !(customInstruction[d.day] ?? '').trim()}
+                      onClick={() => regenerate(d.day, customInstruction[d.day] ?? '')}
+                    >
+                      应用
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {d.items.map((item, i) => {
+                    const cat = (ACTIVITY_CATEGORY as any)[item.category] ?? ACTIVITY_CATEGORY.other;
+                    return (
+                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-gray-50">
+                        <span className="text-sm font-mono text-brand-pink w-12 shrink-0">{item.time}</span>
+                        <span
+                          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                          style={{ background: cat.color + '22' }}
+                        >
+                          {cat.emoji}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-gray-800">{item.title}</div>
+                          <div className="text-xs text-gray-400">{item.note}</div>
+                        </div>
+                        {!!item.cost && (
+                          <span className="text-xs font-semibold text-gray-500 shrink-0">
+                            {fmtMoney(item.cost)}
+                          </span>
+                        )}
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

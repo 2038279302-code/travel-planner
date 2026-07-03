@@ -80,3 +80,13 @@ export const aiRecommendSchema = z.object({
   preferences: z.string().max(500).optional().nullable(),
   budget: z.number().min(0).optional().nullable(),
 });
+
+export const aiRegenerateDaySchema = z.object({
+  destination: z.string().min(1, '请填写目的地'),
+  type: z.enum(['travel', 'business', 'weekend']).default('travel'),
+  day: z.number().int().min(1),
+  totalDays: z.number().int().min(1).max(30),
+  instruction: z.string().min(1, '请填写调整指令').max(200),
+  otherDaysDigest: z.array(z.string()).optional(),
+  budget: z.number().min(0).optional().nullable(),
+});
