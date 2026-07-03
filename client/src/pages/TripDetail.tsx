@@ -420,6 +420,7 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
   const { toast } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Note | null>(null);
+  const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
 
   const handleSubmit = async (data: Partial<Note>) => {
     if (editing) {
@@ -438,6 +439,14 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
     await NoteApi.remove(trip.id, n.id);
     toast('已删除');
     reload();
+  };
+
+  const openLightbox = (images: string[], index: number) => setLightbox({ images, index });
+  const closeLightbox = () => setLightbox(null);
+  const stepLightbox = (delta: number) => {
+    if (!lightbox) return;
+    const len = lightbox.images.length;
+    setLightbox({ ...lightbox, index: (lightbox.index + delta + len) % len });
   };
 
   return (
@@ -473,6 +482,25 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
               <p className="text-gray-600 text-sm mt-3 whitespace-pre-wrap leading-relaxed">
                 {n.content}
               </p>
+              {n.images.length > 0 && (
+                <div
+                  className={`mt-3 grid gap-1.5 ${
+                    n.images.length === 1 ? 'grid-cols-1' : 'grid-cols-3'
+                  }`}
+                >
+                  {n.images.map((src, idx) => (
+                    <img
+                      key={idx}
+                      src={src}
+                      alt={`${n.title ?? '记录'}图片 ${idx + 1}`}
+                      onClick={() => openLightbox(n.images, idx)}
+                      className={`w-full rounded-xl object-cover cursor-zoom-in hover:opacity-90 transition-opacity ${
+                        n.images.length === 1 ? 'max-h-72' : 'aspect-square'
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -489,6 +517,47 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
           onCancel={() => setShowForm(false)}
         />
       </Modal>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/80"
+          onClick={closeLightbox}
+        >
+          <button
+            onClick={closeLightbox}
+            className="absolute top-5 right-5 w-9 h-9 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"
+          >
+            ✕
+          </button>
+          {lightbox.images.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); stepLightbox(-1); }}
+              className="absolute left-4 sm:left-8 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 text-xl"
+            >
+              ‹
+            </button>
+          )}
+          <img
+            src={lightbox.images[lightbox.index]}
+            alt="预览"
+            className="max-w-full max-h-full rounded-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          {lightbox.images.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); stepLightbox(1); }}
+              className="absolute right-4 sm:right-8 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 text-xl"
+            >
+              ›
+            </button>
+          )}
+          {lightbox.images.length > 1 && (
+            <div className="absolute bottom-6 text-white/70 text-sm">
+              {lightbox.index + 1} / {lightbox.images.length}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
