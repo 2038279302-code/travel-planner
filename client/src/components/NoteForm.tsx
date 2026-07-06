@@ -141,24 +141,24 @@ export default function NoteForm({ initial, onSubmit, onCancel }: Props) {
             </div>
           ))}
           {images.length < MAX_IMAGES_PER_NOTE && (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-200 text-gray-300 hover:border-brand-pink/40 hover:text-brand-pink flex items-center justify-center text-2xl transition-colors shrink-0 disabled:opacity-50"
+            <div
+              className={`relative w-16 h-16 rounded-xl border-2 border-dashed border-gray-200 text-gray-300 hover:border-brand-pink/40 hover:text-brand-pink flex items-center justify-center text-2xl transition-colors shrink-0 ${
+                uploading ? 'opacity-50' : ''
+              }`}
             >
               {uploading ? '…' : '＋'}
-            </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={uploading}
+                onChange={(e) => handleFiles(e.target.files)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+              />
+            </div>
           )}
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
       </div>
 
       <div className="flex gap-3 pt-2">
