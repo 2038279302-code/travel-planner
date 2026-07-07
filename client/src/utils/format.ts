@@ -56,3 +56,32 @@ export function fmtLikes(n: number): string {
 export function isSameDay(a: string, b: string): boolean {
   return fmtDate(a) === fmtDate(b);
 }
+
+/** "HH:mm" 转当天分钟数，便于比较 */
+function timeToMinutes(t: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/**
+ * 判断两个行程项的时间段是否重叠。
+ * - 双方都填了开始和结束时间：按真实区间判断重叠。
+ * - 只填了开始时间（无结束时间）：默认占用 1 小时，用于粗略判断。
+ * - 任一方都没填开始时间：视为不冲突（无法判断）。
+ */
+export function isTimeOverlap(
+  a: { startTime: string | null; endTime?: string | null },
+  b: { startTime: string | null; endTime?: string | null }
+): boolean {
+  if (!a.startTime || !b.startTime) return false;
+  const aStart = timeToMinutes(a.startTime);
+  const bStart = timeToMinutes(b.startTime);
+  if (aStart === null || bStart === null) return false;
+
+  const DEFAULT_DURATION = 60; // 未填结束时间时的默认占用时长（分钟）
+  const aEnd = (a.endTime && timeToMinutes(a.endTime)) || aStart + DEFAULT_DURATION;
+  const bEnd = (b.endTime && timeToMinutes(b.endTime)) || bStart + DEFAULT_DURATION;
+
+  return aStart < bEnd && bStart < aEnd;
+}

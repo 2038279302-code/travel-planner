@@ -24,6 +24,7 @@ export default function ActivityForm({
     return raw ? fmtDate(raw) : fmtDate(days[0] ?? new Date().toISOString());
   });
   const [startTime, setStartTime] = useState(initial?.startTime ?? '');
+  const [endTime, setEndTime] = useState(initial?.endTime ?? '');
   const [title, setTitle] = useState(initial?.title ?? '');
   const [category, setCategory] = useState<ActivityCategory>(
     initial?.category ?? 'sightseeing'
@@ -40,6 +41,7 @@ export default function ActivityForm({
       await onSubmit({
         dayDate: localDateToISO(dayDate), // 本地时间转 ISO，避免时区偏移
         startTime: startTime || null,
+        endTime: endTime || null,
         title: title.trim(),
         category,
         location: location.trim() || null,
@@ -72,7 +74,7 @@ export default function ActivityForm({
           </select>
         </div>
         <div>
-          <label className="text-sm text-gray-500 mb-1 block">时间</label>
+          <label className="text-sm text-gray-500 mb-1 block">开始时间</label>
           <input
             type="time"
             className="input"
@@ -80,6 +82,18 @@ export default function ActivityForm({
             onChange={(e) => setStartTime(e.target.value)}
           />
         </div>
+      </div>
+
+      <div>
+        <label className="text-sm text-gray-500 mb-1 block">
+          结束时间 <span className="text-gray-300">（选填，用于时间冲突检测）</span>
+        </label>
+        <input
+          type="time"
+          className="input"
+          value={endTime ?? ''}
+          onChange={(e) => setEndTime(e.target.value)}
+        />
       </div>
 
       <div>

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Note } from '../types';
 import { fmtDate, localDateToISO } from '../utils/format';
 import { compressImageFiles, MAX_IMAGES_PER_NOTE } from '../utils/image';
@@ -25,6 +25,20 @@ export default function NoteForm({ initial, onSubmit, onCancel }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
+
+  // ESC 键关闭图片预览。用捕获阶段监听并阻止冒泡，
+  // 避免同一次 ESC 按键被外层 Modal 的监听器同时捕获、导致表单也被一并关闭
+  useEffect(() => {
+    if (!preview) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setPreview(null);
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [preview]);
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;

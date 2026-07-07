@@ -185,6 +185,23 @@ export const ActivityRepo = {
   remove(activityId: string): void {
     run('DELETE FROM Activity WHERE id = ?', [activityId]);
   },
+
+  /** 拖拽排序：批量更新一组行程项的日期与顺序（同天重排 / 跨天移动均走这里） */
+  reorder(items: { id: string; dayDate: string; order: number }[]): Activity[] {
+    const updated: Activity[] = [];
+    for (const it of items) {
+      const existing = this.find(it.id);
+      if (!existing) continue;
+      const m = { ...existing, dayDate: it.dayDate, order: it.order };
+      run(`UPDATE Activity SET dayDate=?, "order"=? WHERE id=?`, [
+        m.dayDate,
+        m.order,
+        it.id,
+      ]);
+      updated.push(m);
+    }
+    return updated;
+  },
 };
 
 // ===================== Expense =====================

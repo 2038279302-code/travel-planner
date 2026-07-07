@@ -52,6 +52,19 @@ export const activitySchema = z.object({
 
 export const activityUpdateSchema = activitySchema.partial();
 
+/** 拖拽排序：批量更新行程项的日期与顺序 */
+export const activityReorderSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        dayDate: z.string().min(1),
+        order: z.number().int(),
+      })
+    )
+    .min(1, '至少需要一项'),
+});
+
 export const expenseSchema = z.object({
   title: z.string().min(1, '标题不能为空').max(200),
   category: z

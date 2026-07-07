@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { ActivityRepo } from '../db/repositories';
-import { validateBody, activitySchema, activityUpdateSchema } from '../lib/validate';
+import {
+  validateBody,
+  activitySchema,
+  activityUpdateSchema,
+  activityReorderSchema,
+} from '../lib/validate';
 
 const router = Router({ mergeParams: true });
 
@@ -32,6 +37,21 @@ router.post('/', validateBody(activitySchema), (req, res, next) => {
       order: d.order,
     });
     res.status(201).json(activity);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** 拖拽排序：批量更新行程项的日期与顺序（需放在 /:id 之前，避免被误匹配） */
+router.patch('/reorder', validateBody(activityReorderSchema), (req, res, next) => {
+  try {
+    const { items } = req.body as { items: { id: string; dayDate: string; order: number }[] };
+    const normalized = items.map((it) => ({
+      ...it,
+      dayDate: new Date(it.dayDate).toISOString(),
+    }));
+    const updated = ActivityRepo.reorder(normalized);
+    res.json(updated);
   } catch (err) {
     next(err);
   }

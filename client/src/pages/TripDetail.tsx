@@ -1,5 +1,21 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import type { TripDetail, Activity, Expense, Note, Trip } from '../types';
 import { TripApi, ActivityApi, ExpenseApi, NoteApi } from '../api';
 import { useStore } from '../store/useStore';
@@ -9,7 +25,14 @@ import {
   ACTIVITY_CATEGORY,
   EXPENSE_CATEGORY,
 } from '../utils/constants';
-import { fmtDate, fmtMonthDay, tripDays, dayRange, fmtMoney } from '../utils/format';
+import {
+  fmtDate,
+  fmtMonthDay,
+  tripDays,
+  dayRange,
+  fmtMoney,
+  isTimeOverlap,
+} from '../utils/format';
 import Modal from '../components/Modal';
 import TripForm from '../components/TripForm';
 import ActivityForm from '../components/ActivityForm';
@@ -159,6 +182,19 @@ function PlanTab({
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Activity | null>(null);
   const [formDay, setFormDay] = useState<string | undefined>();
+  // 拖拽过程中的本地乐观状态：拖拽结束前用它渲染，避免等待接口往返造成的闪烁
+  const [localActivities, setLocalActivities] = useState<Activity[] | null>(null);
+
+  const activities = localActivities ?? trip.activities;
+
+  // trip 数据刷新后清空本地覆盖，改用最新的服务端数据
+  useEffect(() => {
+    setLocalActivities(null);
+  }, [trip.activities]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
 
   const openAdd = (day?: string) => {
     setEditing(null);
@@ -194,83 +230,159 @@ function PlanTab({
     reload();
   };
 
+  // 按天分组，并计算每天内的时间冲突集合
+  const dayGroups = days.map((day) => {
+    const dayStr = fmtDate(day);
+    const items = activities
+      .filter((a) => fmtDate(a.dayDate) === dayStr)
+      .sort((a, b) => a.order - b.order);
+    const conflictIds = new Set<string>();
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        if (isTimeOverlap(items[i], items[j])) {
+          conflictIds.add(items[i].id);
+          conflictIds.add(items[j].id);
+        }
+      }
+    }
+    return { day, dayStr, items, conflictIds };
+  });
+
+  const findContainer = (activityId: string) =>
+    dayGroups.find((g) => g.items.some((a) => a.id === activityId))?.dayStr;
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = String(active.id);
+    // over.id 可能是行程项 id（悬停在某一项上），也可能是某天容器的 id（day:YYYY-MM-DD，悬停在空白处）
+    const overIdRaw = String(over.id);
+    const overIsContainer = overIdRaw.startsWith('day:');
+    const overDayStr = overIsContainer ? overIdRaw.slice(4) : findContainer(overIdRaw);
+    const fromDayStr = findContainer(activeId);
+    if (!overDayStr || !fromDayStr) return;
+
+    const fromGroup = dayGroups.find((g) => g.dayStr === fromDayStr)!;
+    const toGroup = dayGroups.find((g) => g.dayStr === overDayStr)!;
+    const activeItem = fromGroup.items.find((a) => a.id === activeId);
+    if (!activeItem) return;
+
+    let nextFromItems = fromGroup.items;
+    let nextToItems: Activity[];
+
+    if (fromDayStr === overDayStr) {
+      // 同一天内重排
+      const oldIndex = fromGroup.items.findIndex((a) => a.id === activeId);
+      const newIndex = overIsContainer
+        ? fromGroup.items.length - 1
+        : fromGroup.items.findIndex((a) => a.id === overIdRaw);
+      if (oldIndex === newIndex || newIndex < 0) return;
+      nextToItems = arrayMove(fromGroup.items, oldIndex, newIndex);
+      nextFromItems = nextToItems;
+    } else {
+      // 跨天移动
+      nextFromItems = fromGroup.items.filter((a) => a.id !== activeId);
+      const insertAt = overIsContainer
+        ? toGroup.items.length
+        : toGroup.items.findIndex((a) => a.id === overIdRaw);
+      const movedItem = { ...activeItem, dayDate: toGroup.day };
+      nextToItems = [...toGroup.items];
+      nextToItems.splice(insertAt < 0 ? nextToItems.length : insertAt, 0, movedItem);
+    }
+
+    // 乐观更新本地状态，交互上立即看到结果
+    const updatedIds = new Set([
+      ...nextFromItems.map((a) => a.id),
+      ...nextToItems.map((a) => a.id),
+    ]);
+    const merged = activities
+      .filter((a) => !updatedIds.has(a.id))
+      .concat(
+        fromDayStr === overDayStr
+          ? nextToItems.map((a, i) => ({ ...a, order: i }))
+          : [
+              ...nextFromItems.map((a, i) => ({ ...a, order: i })),
+              ...nextToItems.map((a, i) => ({ ...a, order: i })),
+            ]
+      );
+    setLocalActivities(merged);
+
+    // 提交到服务端：一次性批量更新受影响的行程项
+    const payload =
+      fromDayStr === overDayStr
+        ? nextToItems.map((a, i) => ({ id: a.id, dayDate: a.dayDate, order: i }))
+        : [
+            ...nextFromItems.map((a, i) => ({ id: a.id, dayDate: a.dayDate, order: i })),
+            ...nextToItems.map((a, i) => ({ id: a.id, dayDate: a.dayDate, order: i })),
+          ];
+
+    try {
+      await ActivityApi.reorder(trip.id, payload);
+      if (fromDayStr !== overDayStr) toast('已移动到新的一天');
+      reload();
+    } catch {
+      toast('排序保存失败，请重试', 'error');
+      setLocalActivities(null);
+      reload();
+    }
+  };
+
   return (
     <div className="space-y-5 animate-fade-up">
-      {days.map((day, idx) => {
-        // 统一转为 YYYY-MM-DD 比较，避免 ISO 字符串格式不一致导致的匹配失败
-        const dayStr = fmtDate(day);
-        const items = trip.activities.filter((a) => fmtDate(a.dayDate) === dayStr);
-        return (
-          <div key={day} className="card p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-9 h-9 rounded-2xl bg-gradient-to-br from-brand-pink to-brand-orange text-white flex items-center justify-center font-bold text-sm">
-                  D{idx + 1}
-                </span>
-                <div>
-                  <div className="font-bold text-gray-800">第 {idx + 1} 天</div>
-                  <div className="text-xs text-gray-400">{fmtMonthDay(day)}</div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        {dayGroups.map(({ day, dayStr, items, conflictIds }, idx) => (
+          <DroppableDay key={day} id={`day:${dayStr}`}>
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-9 h-9 rounded-2xl bg-gradient-to-br from-brand-pink to-brand-orange text-white flex items-center justify-center font-bold text-sm">
+                    D{idx + 1}
+                  </span>
+                  <div>
+                    <div className="font-bold text-gray-800">第 {idx + 1} 天</div>
+                    <div className="text-xs text-gray-400">{fmtMonthDay(day)}</div>
+                  </div>
                 </div>
+                <button
+                  onClick={() => openAdd(day)}
+                  className="text-sm text-brand-pink hover:underline"
+                >
+                  ＋ 添加
+                </button>
               </div>
-              <button
-                onClick={() => openAdd(day)}
-                className="text-sm text-brand-pink hover:underline"
-              >
-                ＋ 添加
-              </button>
-            </div>
 
-            {items.length === 0 ? (
-              <p className="text-sm text-gray-300 py-3 text-center">这一天还没有安排～</p>
-            ) : (
-              <div className="space-y-2">
-                {items.map((a) => {
-                  const cat = ACTIVITY_CATEGORY[a.category];
-                  return (
-                    <div
-                      key={a.id}
-                      className="flex items-center gap-3 p-3 rounded-2xl hover:bg-gray-50 group transition-colors"
-                    >
-                      <button
-                        onClick={() => toggleDone(a)}
-                        className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs transition-colors ${
-                          a.done
-                            ? 'bg-brand-green border-brand-green text-white'
-                            : 'border-gray-300 text-transparent hover:border-brand-pink'
-                        }`}
-                      >
-                        ✓
-                      </button>
-                      <span
-                        className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-                        style={{ background: cat.color + '22' }}
-                      >
-                        {cat.emoji}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className={`font-medium truncate ${a.done ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-                          {a.startTime && <span className="text-brand-pink mr-2">{a.startTime}</span>}
-                          {a.title}
-                        </div>
-                        <div className="text-xs text-gray-400 flex gap-2 flex-wrap">
-                          <span>{cat.label}</span>
-                          {a.location && <span>· 📍{a.location}</span>}
-                          {a.cost > 0 && <span>· {fmtMoney(a.cost)}</span>}
-                          {a.note && <span>· {a.note}</span>}
-                        </div>
-                      </div>
-                      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                        <button onClick={() => openEdit(a)} className="text-gray-400 hover:text-brand-blue text-sm px-1">✏️</button>
-                        <button onClick={() => remove(a)} className="text-gray-400 hover:text-red-500 text-sm px-1">🗑️</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
+              {conflictIds.size > 0 && (
+                <div className="mb-3 text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2 flex items-center gap-1.5">
+                  ⚠️ 这一天有行程时间冲突，标红的项存在时间重叠，建议调整
+                </div>
+              )}
+
+              {items.length === 0 ? (
+                <p className="text-sm text-gray-300 py-3 text-center">这一天还没有安排～</p>
+              ) : (
+                <SortableContext
+                  items={items.map((a) => a.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {items.map((a) => (
+                      <SortableActivityItem
+                        key={a.id}
+                        activity={a}
+                        conflict={conflictIds.has(a.id)}
+                        onToggleDone={() => toggleDone(a)}
+                        onEdit={() => openEdit(a)}
+                        onRemove={() => remove(a)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              )}
+            </div>
+          </DroppableDay>
+        ))}
+      </DndContext>
 
       <Modal
         open={showForm}
@@ -285,6 +397,100 @@ function PlanTab({
           onCancel={() => setShowForm(false)}
         />
       </Modal>
+    </div>
+  );
+}
+
+/** 每一天的可放置容器：承载该天的 SortableContext，空白处也能接住跨天拖入的行程项 */
+function DroppableDay({ id, children }: { id: string; children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-2xl transition-shadow ${isOver ? 'ring-2 ring-brand-pink/40' : ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** 可拖拽排序的单个行程项 */
+function SortableActivityItem({
+  activity: a,
+  conflict,
+  onToggleDone,
+  onEdit,
+  onRemove,
+}: {
+  activity: Activity;
+  conflict: boolean;
+  onToggleDone: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: a.id,
+  });
+  const cat = ACTIVITY_CATEGORY[a.category];
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 p-3 rounded-2xl hover:bg-gray-50 group transition-colors ${
+        isDragging ? 'opacity-50 shadow-soft bg-white z-10' : ''
+      } ${conflict ? 'bg-red-50/70 hover:bg-red-50' : ''}`}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="shrink-0 w-5 text-gray-300 hover:text-gray-400 cursor-grab active:cursor-grabbing touch-none"
+        title="拖拽排序 / 拖到其他天"
+      >
+        ⠿
+      </button>
+      <button
+        onClick={onToggleDone}
+        className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs transition-colors ${
+          a.done
+            ? 'bg-brand-green border-brand-green text-white'
+            : 'border-gray-300 text-transparent hover:border-brand-pink'
+        }`}
+      >
+        ✓
+      </button>
+      <span
+        className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+        style={{ background: cat.color + '22' }}
+      >
+        {cat.emoji}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className={`font-medium truncate ${a.done ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+          {a.startTime && (
+            <span className={conflict ? 'text-red-500 mr-2' : 'text-brand-pink mr-2'}>
+              {a.startTime}
+              {a.endTime ? `–${a.endTime}` : ''}
+            </span>
+          )}
+          {a.title}
+          {conflict && <span className="ml-1.5 text-xs text-red-500">⚠️ 时间冲突</span>}
+        </div>
+        <div className="text-xs text-gray-400 flex gap-2 flex-wrap">
+          <span>{cat.label}</span>
+          {a.location && <span>· 📍{a.location}</span>}
+          {a.cost > 0 && <span>· {fmtMoney(a.cost)}</span>}
+          {a.note && <span>· {a.note}</span>}
+        </div>
+      </div>
+      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+        <button onClick={onEdit} className="text-gray-400 hover:text-brand-blue text-sm px-1">✏️</button>
+        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 text-sm px-1">🗑️</button>
+      </div>
     </div>
   );
 }
@@ -448,6 +654,18 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
     const len = lightbox.images.length;
     setLightbox({ ...lightbox, index: (lightbox.index + delta + len) % len });
   };
+
+  // 键盘控制：ESC 关闭，左右方向键切换图片
+  useEffect(() => {
+    if (!lightbox) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeLightbox();
+      else if (e.key === 'ArrowLeft') stepLightbox(-1);
+      else if (e.key === 'ArrowRight') stepLightbox(1);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [lightbox]);
 
   return (
     <div className="space-y-5 animate-fade-up">

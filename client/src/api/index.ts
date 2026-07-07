@@ -32,6 +32,11 @@ export const ActivityApi = {
     api.put<Activity>(`/trips/${tripId}/activities/${id}`, data).then((r) => r.data),
   remove: (tripId: string, id: string) =>
     api.delete(`/trips/${tripId}/activities/${id}`).then((r) => r.data),
+  /** 拖拽排序：批量更新一组行程项的日期与顺序 */
+  reorder: (tripId: string, items: { id: string; dayDate: string; order: number }[]) =>
+    api
+      .patch<Activity[]>(`/trips/${tripId}/activities/reorder`, { items })
+      .then((r) => r.data),
 };
 
 // ===== Expenses =====
