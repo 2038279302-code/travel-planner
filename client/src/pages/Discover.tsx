@@ -42,15 +42,17 @@ export default function Discover() {
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && load(keyword)}
             placeholder="搜索目的地或玩法，例如：赏枫、海岛、美食"
+            aria-label="搜索目的地或玩法"
           />
-          <button className="btn-primary" onClick={() => load(keyword)}>
-            搜索
+          <button type="button" className="btn-primary shrink-0" onClick={() => load(keyword)} disabled={loading}>
+            {loading ? '搜索中…' : '搜索'}
           </button>
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
           {HOT.map((h) => (
             <button
               key={h}
+              type="button"
               onClick={() => {
                 setKeyword(h);
                 load(h);
@@ -75,7 +77,7 @@ export default function Discover() {
           {cards.map((c, i) => (
             <div
               key={c.id}
-              className="card overflow-hidden break-inside-avoid cursor-pointer group animate-fade-up hover:-translate-y-1 transition-transform"
+              className="card overflow-hidden break-inside-avoid group animate-fade-up transition-transform"
               style={{ animationDelay: `${i * 50}ms` }}
             >
               <div

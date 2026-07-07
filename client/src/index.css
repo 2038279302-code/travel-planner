@@ -32,6 +32,40 @@ body {
   background: transparent;
 }
 
+/* 隐藏滚动条但保留滚动能力，用于横向可滚动的 Tab / chip 组 */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* 键盘可访问性：为所有可交互元素提供清晰可见的焦点样式，
+   仅在键盘导航（:focus-visible）时显示，避免鼠标点击时出现多余的高亮框 */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid theme('colors.brand.pink');
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 尊重系统"减少动态效果"设置，关闭装饰性动画，避免对前庭功能敏感用户造成不适 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @layer components {
   .card {
     @apply bg-white/80 backdrop-blur rounded-3xl shadow-soft border border-white/60;
@@ -48,6 +82,10 @@ body {
   .input {
     @apply w-full px-4 py-2.5 rounded-2xl border border-gray-200 bg-white/80
       outline-none transition-shadow focus:ring-2 focus:ring-brand-pink/40 focus:border-brand-pink/50;
+  }
+  /* 校验失败态：与 .input 叠加使用，例如 className={`input ${error ? 'input-error' : ''}`} */
+  .input-error {
+    @apply border-red-300 bg-red-50/50 focus:ring-red-200 focus:border-red-300;
   }
   .chip {
     @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium;

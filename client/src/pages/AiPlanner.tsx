@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AiRecommendResult, TripType, ActivityCategory } from '../types';
 import { AiApi, TripApi, ActivityApi } from '../api';
 import { useStore } from '../store/useStore';
 import { TRIP_TYPE, ACTIVITY_CATEGORY, COVER_EMOJIS, COVER_COLORS } from '../utils/constants';
 import { fmtMoney } from '../utils/format';
+import FieldError from '../components/FieldError';
 
 // 局部重新生成的预设调整指令
 const REGEN_PRESETS = [
@@ -28,12 +29,17 @@ export default function AiPlanner() {
   const [regenDay, setRegenDay] = useState<number | null>(null);
   // 每天自定义调整指令的输入框内容
   const [customInstruction, setCustomInstruction] = useState<Record<number, string>>({});
+  const [destinationError, setDestinationError] = useState<string | undefined>();
+  const destinationRef = useRef<HTMLInputElement>(null);
 
   const generate = async () => {
     if (!destination.trim()) {
-      toast('请先填写目的地哦', 'info');
+      setDestinationError('请先填写目的地哦');
+      toast('请先填写目的地哦', 'error');
+      destinationRef.current?.focus();
       return;
     }
+    setDestinationError(undefined);
     setLoading(true);
     setResult(null);
     try {
@@ -157,17 +163,26 @@ export default function AiPlanner() {
       <div className="card p-6 animate-fade-up space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="text-sm text-gray-500 mb-1 block">目的地 *</label>
+            <label htmlFor="ai-destination" className="text-sm text-gray-500 mb-1 block">目的地 *</label>
             <input
-              className="input"
+              id="ai-destination"
+              ref={destinationRef}
+              className={`input ${destinationError ? 'input-error' : ''}`}
               value={destination}
-              onChange={(e) => setDestination(e.target.value)}
+              onChange={(e) => {
+                setDestination(e.target.value);
+                if (destinationError) setDestinationError(undefined);
+              }}
               placeholder="例如：成都、东京、大理"
+              aria-invalid={!!destinationError}
+              aria-describedby={destinationError ? 'ai-destination-error' : undefined}
             />
+            <FieldError id="ai-destination-error" message={destinationError} />
           </div>
           <div>
-            <label className="text-sm text-gray-500 mb-1 block">天数</label>
+            <label htmlFor="ai-days" className="text-sm text-gray-500 mb-1 block">天数</label>
             <input
+              id="ai-days"
               type="number"
               min={1}
               max={30}
@@ -181,10 +196,13 @@ export default function AiPlanner() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-sm text-gray-500 mb-1.5 block">出行类型</label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="出行类型">
               {Object.entries(TRIP_TYPE).map(([k, v]) => (
                 <button
                   key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={type === k}
                   onClick={() => setType(k as TripType)}
                   className={`chip px-4 py-2 ${
                     type === k
@@ -198,9 +216,11 @@ export default function AiPlanner() {
             </div>
           </div>
           <div>
-            <label className="text-sm text-gray-500 mb-1 block">预算参考（¥，选填）</label>
+            <label htmlFor="ai-budget" className="text-sm text-gray-500 mb-1 block">预算参考（¥，选填）</label>
             <input
+              id="ai-budget"
               type="number"
+              min={0}
               className="input"
               value={budget}
               onChange={(e) => setBudget(e.target.value)}
@@ -210,8 +230,9 @@ export default function AiPlanner() {
         </div>
 
         <div>
-          <label className="text-sm text-gray-500 mb-1 block">偏好（选填）</label>
+          <label htmlFor="ai-preferences" className="text-sm text-gray-500 mb-1 block">偏好（选填）</label>
           <input
+            id="ai-preferences"
             className="input"
             value={preferences}
             onChange={(e) => setPreferences(e.target.value)}
@@ -237,7 +258,7 @@ export default function AiPlanner() {
         <div className="space-y-5 animate-fade-up">
           <div className="card p-6">
             <div className="flex items-center justify-between flex-wrap gap-3">
-              <h2 className="text-xl font-bold text-gray-800">
+              <h2 className="text-xl font-bold text-gray-800 break-words min-w-0">
                 ✈️ {result.destination} · {result.days.length} 天行程
               </h2>
               <div className="flex items-center gap-2">
@@ -273,14 +294,14 @@ export default function AiPlanner() {
             const dayCost = d.items.reduce((s, it) => s + (it.cost || 0), 0);
             return (
               <div key={d.day} className="card p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-9 h-9 rounded-2xl bg-gradient-to-br from-brand-purple to-brand-blue text-white flex items-center justify-center font-bold text-sm">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="shrink-0 w-9 h-9 rounded-2xl bg-gradient-to-br from-brand-purple to-brand-blue text-white flex items-center justify-center font-bold text-sm">
                       D{d.day}
                     </span>
-                    <h3 className="font-bold text-gray-800">{d.theme}</h3>
+                    <h3 className="font-bold text-gray-800 truncate">{d.theme}</h3>
                   </div>
-                  <span className="text-xs font-medium text-gray-400">当日约 {fmtMoney(dayCost)}</span>
+                  <span className="shrink-0 text-xs font-medium text-gray-400">当日约 {fmtMoney(dayCost)}</span>
                 </div>
 
                 {/* 局部重新生成操作栏 */}

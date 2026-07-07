@@ -60,10 +60,13 @@ export default function Dashboard() {
 
       {/* 筛选 + 新建 */}
       <section className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap" role="radiogroup" aria-label="行程类型筛选">
           {FILTERS.map((f) => (
             <button
               key={f.key}
+              type="button"
+              role="radio"
+              aria-checked={filter === f.key}
               onClick={() => setFilter(f.key)}
               className={`chip px-4 py-2 ${
                 filter === f.key
@@ -138,7 +141,16 @@ function TripCard({
   return (
     <div
       onClick={onClick}
-      className="card overflow-hidden cursor-pointer group animate-fade-up hover:-translate-y-1 transition-transform"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`查看旅行：${trip.title}`}
+      className="card overflow-hidden cursor-pointer group animate-fade-up hover:-translate-y-1 transition-transform focus-visible:-translate-y-1"
       style={{ animationDelay: `${delay}ms` }}
     >
       <div
@@ -162,7 +174,7 @@ function TripCard({
           </span>
         </div>
         <h3 className="font-bold text-lg text-gray-800 mt-0.5 truncate">{trip.title}</h3>
-        <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+        <p className="text-sm text-gray-500 flex items-center gap-1 mt-1 truncate">
           📍 {trip.destination}
         </p>
         <div className="flex items-center justify-between mt-3 text-xs text-gray-400">

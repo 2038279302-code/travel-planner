@@ -38,6 +38,8 @@ import TripForm from '../components/TripForm';
 import ActivityForm from '../components/ActivityForm';
 import ExpenseForm from '../components/ExpenseForm';
 import NoteForm from '../components/NoteForm';
+import { useLockBodyScroll } from '../utils/useLockBodyScroll';
+import { createPortal } from 'react-dom';
 
 type Tab = 'plan' | 'budget' | 'notes';
 
@@ -111,10 +113,10 @@ export default function TripDetailPage() {
                   {st.label}
                 </span>
               </div>
-              <h1 className="text-2xl font-extrabold text-gray-800 mt-1">{trip.title}</h1>
-              <p className="text-gray-500 mt-1 flex items-center gap-1">📍 {trip.destination}</p>
+              <h1 className="text-2xl font-extrabold text-gray-800 mt-1 break-words">{trip.title}</h1>
+              <p className="text-gray-500 mt-1 flex items-center gap-1 break-words">📍 {trip.destination}</p>
               {trip.description && (
-                <p className="text-gray-400 text-sm mt-2 max-w-xl">{trip.description}</p>
+                <p className="text-gray-400 text-sm mt-2 max-w-xl break-words whitespace-pre-wrap">{trip.description}</p>
               )}
             </div>
             <div className="flex gap-2">
@@ -136,8 +138,8 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      {/* Tab 切换 */}
-      <div className="flex gap-2 p-1.5 bg-white/60 rounded-2xl w-fit">
+      {/* Tab 切换：窄屏下允许横向滚动，避免文字挤压换行撑破布局 */}
+      <div className="flex gap-2 p-1.5 bg-white/60 rounded-2xl w-full sm:w-fit overflow-x-auto no-scrollbar">
         {([
           { k: 'plan', label: '📅 每日规划', n: trip.activities.length },
           { k: 'budget', label: '💸 预算花销', n: trip.expenses.length },
@@ -146,7 +148,7 @@ export default function TripDetailPage() {
           <button
             key={t.k}
             onClick={() => setTab(t.k)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap shrink-0 ${
               tab === t.k
                 ? 'bg-gradient-to-r from-brand-pink to-brand-orange text-white shadow-glow'
                 : 'text-gray-500 hover:bg-white'
@@ -448,7 +450,7 @@ function SortableActivityItem({
       <button
         {...attributes}
         {...listeners}
-        className="shrink-0 w-5 text-gray-300 hover:text-gray-400 cursor-grab active:cursor-grabbing touch-none"
+        className="shrink-0 w-8 h-8 -ml-1.5 flex items-center justify-center text-lg text-gray-300 hover:text-gray-400 cursor-grab active:cursor-grabbing touch-none"
         title="拖拽排序 / 拖到其他天"
       >
         ⠿
@@ -487,9 +489,9 @@ function SortableActivityItem({
           {a.note && <span>· {a.note}</span>}
         </div>
       </div>
-      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-        <button onClick={onEdit} className="text-gray-400 hover:text-brand-blue text-sm px-1">✏️</button>
-        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 text-sm px-1">🗑️</button>
+      <div className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-1">
+        <button onClick={onEdit} aria-label="编辑行程" className="text-gray-400 hover:text-brand-blue text-base sm:text-sm p-1.5 sm:px-1 sm:py-0">✏️</button>
+        <button onClick={onRemove} aria-label="删除行程" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:px-1 sm:py-0">🗑️</button>
       </div>
     </div>
   );
@@ -595,10 +597,10 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
                   <div className="font-medium text-gray-800 truncate">{e.title}</div>
                   <div className="text-xs text-gray-400">{c.label} · {fmtDate(e.date)}</div>
                 </div>
-                <div className="font-bold text-gray-700">{fmtMoney(e.amount)}</div>
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 shrink-0">
-                  <button onClick={() => { setEditing(e); setShowForm(true); }} className="text-gray-400 hover:text-brand-blue text-sm">✏️</button>
-                  <button onClick={() => remove(e)} className="text-gray-400 hover:text-red-500 text-sm">🗑️</button>
+                <div className="font-bold text-gray-700 shrink-0">{fmtMoney(e.amount)}</div>
+                <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-1 shrink-0">
+                  <button onClick={() => { setEditing(e); setShowForm(true); }} aria-label="编辑花销" className="text-gray-400 hover:text-brand-blue text-base sm:text-sm p-1.5 sm:p-1">✏️</button>
+                  <button onClick={() => remove(e)} aria-label="删除花销" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:p-1">🗑️</button>
                 </div>
               </div>
             );
@@ -655,16 +657,22 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
     setLightbox({ ...lightbox, index: (lightbox.index + delta + len) % len });
   };
 
-  // 键盘控制：ESC 关闭，左右方向键切换图片
+  // Lightbox 打开时锁定背后页面滚动，避免移动端出现滚动穿透
+  useLockBodyScroll(!!lightbox);
+
+  // 键盘控制：ESC 关闭，左右方向键切换图片。用捕获阶段监听并阻止冒泡，
+  // 避免同一次 ESC 被外层 Modal 的监听器同时捕获、导致表单也被一并关闭
   useEffect(() => {
     if (!lightbox) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeLightbox();
-      else if (e.key === 'ArrowLeft') stepLightbox(-1);
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeLightbox();
+      } else if (e.key === 'ArrowLeft') stepLightbox(-1);
       else if (e.key === 'ArrowRight') stepLightbox(1);
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [lightbox]);
 
   return (
@@ -692,9 +700,9 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
                     <div className="text-xs text-gray-400">{fmtDate(n.date)}</div>
                   </div>
                 </div>
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                  <button onClick={() => { setEditing(n); setShowForm(true); }} className="text-gray-400 hover:text-brand-blue text-sm">✏️</button>
-                  <button onClick={() => remove(n)} className="text-gray-400 hover:text-red-500 text-sm">🗑️</button>
+                <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-1">
+                  <button onClick={() => { setEditing(n); setShowForm(true); }} aria-label="编辑记录" className="text-gray-400 hover:text-brand-blue text-base sm:text-sm p-1.5 sm:p-1">✏️</button>
+                  <button onClick={() => remove(n)} aria-label="删除记录" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:p-1">🗑️</button>
                 </div>
               </div>
               <p className="text-gray-600 text-sm mt-3 whitespace-pre-wrap leading-relaxed">
@@ -707,15 +715,23 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
                   }`}
                 >
                   {n.images.map((src, idx) => (
-                    <img
+                    <button
                       key={idx}
-                      src={src}
-                      alt={`${n.title ?? '记录'}图片 ${idx + 1}`}
+                      type="button"
                       onClick={() => openLightbox(n.images, idx)}
-                      className={`w-full rounded-xl object-cover cursor-zoom-in hover:opacity-90 transition-opacity ${
-                        n.images.length === 1 ? 'max-h-72' : 'aspect-square'
+                      aria-label={`查看${n.title ?? '记录'}图片 ${idx + 1}`}
+                      className={`p-0 border-0 bg-transparent block w-full rounded-xl overflow-hidden focus-visible:ring-2 focus-visible:ring-brand-pink/50 ${
+                        n.images.length === 1 ? '' : 'aspect-square'
                       }`}
-                    />
+                    >
+                      <img
+                        src={src}
+                        alt={`${n.title ?? '记录'}图片 ${idx + 1}`}
+                        className={`w-full h-full rounded-xl object-cover cursor-zoom-in hover:opacity-90 transition-opacity ${
+                          n.images.length === 1 ? 'max-h-72' : ''
+                        }`}
+                      />
+                    </button>
                   ))}
                 </div>
               )}
@@ -736,46 +752,54 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
         />
       </Modal>
 
-      {lightbox && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/80"
-          onClick={closeLightbox}
-        >
-          <button
+      {lightbox &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="图片预览"
+            className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/80"
             onClick={closeLightbox}
-            className="absolute top-5 right-5 w-9 h-9 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"
           >
-            ✕
-          </button>
-          {lightbox.images.length > 1 && (
             <button
-              onClick={(e) => { e.stopPropagation(); stepLightbox(-1); }}
-              className="absolute left-4 sm:left-8 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 text-xl"
+              onClick={closeLightbox}
+              aria-label="关闭预览"
+              className="absolute top-5 right-5 w-9 h-9 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20"
             >
-              ‹
+              ✕
             </button>
-          )}
-          <img
-            src={lightbox.images[lightbox.index]}
-            alt="预览"
-            className="max-w-full max-h-full rounded-2xl object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-          {lightbox.images.length > 1 && (
-            <button
-              onClick={(e) => { e.stopPropagation(); stepLightbox(1); }}
-              className="absolute right-4 sm:right-8 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 text-xl"
-            >
-              ›
-            </button>
-          )}
-          {lightbox.images.length > 1 && (
-            <div className="absolute bottom-6 text-white/70 text-sm">
-              {lightbox.index + 1} / {lightbox.images.length}
-            </div>
-          )}
-        </div>
-      )}
+            {lightbox.images.length > 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); stepLightbox(-1); }}
+                aria-label="上一张"
+                className="absolute left-4 sm:left-8 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 text-xl"
+              >
+                ‹
+              </button>
+            )}
+            <img
+              src={lightbox.images[lightbox.index]}
+              alt="预览"
+              className="max-w-full max-h-full rounded-2xl object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+            {lightbox.images.length > 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); stepLightbox(1); }}
+                aria-label="下一张"
+                className="absolute right-4 sm:right-8 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 text-xl"
+              >
+                ›
+              </button>
+            )}
+            {lightbox.images.length > 1 && (
+              <div className="absolute bottom-6 text-white/70 text-sm">
+                {lightbox.index + 1} / {lightbox.images.length}
+              </div>
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
