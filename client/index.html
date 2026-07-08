@@ -2,7 +2,13 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <!-- 部分安卓 WebView / 微信内嵌浏览器会把长按文字触发系统菜单误判为选中区域，
+         禁用双指缩放和长按选词，避免布局在触摸交互中被意外撑开或错位 -->
+    <meta name="format-detection" content="telephone=no" />
     <title>漫游手账 · 旅行规划与记录</title>
     <meta name="description" content="活泼多彩的个人旅行、差旅、周末出行行程规划与记录工具" />
   </head>

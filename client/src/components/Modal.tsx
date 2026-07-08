@@ -107,9 +107,9 @@ export default function Modal({
           className={`card w-full ${maxWidth} animate-fade-up flex flex-col max-h-[85vh] overflow-hidden outline-none`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* 标题栏：固定不随内容滚动 */}
-          <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0 border-b border-gray-100/80">
-            <h3 id={titleId.current} className="text-xl font-bold text-gray-800">
+          {/* 标题栏：固定不随内容滚动；标题允许换行，避免超长标题挤压关闭按钮 */}
+          <div className="flex items-start justify-between gap-3 px-5 sm:px-6 pt-5 sm:pt-6 pb-4 shrink-0 border-b border-gray-100/80">
+            <h3 id={titleId.current} className="text-lg sm:text-xl font-bold text-gray-800 break-words min-w-0">
               {title}
             </h3>
             <button
@@ -121,7 +121,7 @@ export default function Modal({
             </button>
           </div>
           {/* 内容区：超出高度时内部滚动，标题栏始终可见 */}
-          <div className="px-6 py-5 overflow-y-auto overscroll-contain">{children}</div>
+          <div className="px-5 sm:px-6 py-4 sm:py-5 overflow-y-auto overscroll-contain">{children}</div>
         </div>
       </div>
     </div>,

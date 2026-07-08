@@ -66,6 +66,17 @@ textarea:focus-visible,
   }
 }
 
+/* 移动端适配：禁止长按弹出系统菜单/图片拖拽保存，避免触摸交互中出现选中高亮
+   造成的布局错位观感（仅对非文本输入类元素生效，输入框/文本域不受影响） */
+button,
+a,
+img,
+[role='button'] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 @layer components {
   .card {
     @apply bg-white/80 backdrop-blur rounded-3xl shadow-soft border border-white/60;
@@ -78,6 +89,16 @@ textarea:focus-visible,
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-2xl font-medium
       bg-white/70 text-gray-600 border border-gray-200 transition-colors hover:bg-white hover:text-brand-pink;
+  }
+  /* 移动端专用的紧凑图标按钮：窄屏下把"✏️ 编辑"这类文字按钮收成纯图标胶囊，
+     避免多个 btn-ghost 平铺占满整行；sm 断点及以上恢复正常文字按钮的内边距 */
+  .btn-icon {
+    @apply inline-flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto rounded-full sm:rounded-2xl
+      text-base sm:text-sm font-medium bg-white/70 text-gray-600 border border-gray-200
+      transition-colors hover:bg-white hover:text-brand-pink sm:px-4 sm:py-2 sm:gap-1.5;
+  }
+  .btn-icon .btn-icon-label {
+    @apply hidden sm:inline;
   }
   .input {
     @apply w-full px-4 py-2.5 rounded-2xl border border-gray-200 bg-white/80

@@ -99,33 +99,36 @@ export default function TripDetailPage() {
       {/* 头部封面 */}
       <div className="card overflow-hidden animate-fade-up">
         <div
-          className="h-32 sm:h-40 flex items-center justify-center text-7xl relative"
+          className="h-24 sm:h-40 flex items-center justify-center text-5xl sm:text-7xl relative"
           style={{ background: trip.coverColor }}
         >
           <span className="drop-shadow-lg">{trip.coverEmoji}</span>
         </div>
-        <div className="p-5 sm:p-6">
+        <div className="p-4 sm:p-6">
           <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400 flex-wrap">
                 <span>{TRIP_TYPE[trip.type].emoji} {TRIP_TYPE[trip.type].label}</span>
                 <span className="chip" style={{ color: st.color, background: st.bg }}>
                   {st.label}
                 </span>
               </div>
-              <h1 className="text-2xl font-extrabold text-gray-800 mt-1 break-words">{trip.title}</h1>
-              <p className="text-gray-500 mt-1 flex items-center gap-1 break-words">📍 {trip.destination}</p>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-gray-800 mt-1 break-words">{trip.title}</h1>
+              <p className="text-sm sm:text-base text-gray-500 mt-1 flex items-center gap-1 break-words">📍 {trip.destination}</p>
               {trip.description && (
-                <p className="text-gray-400 text-sm mt-2 max-w-xl break-words whitespace-pre-wrap">{trip.description}</p>
+                <p className="text-gray-400 text-xs sm:text-sm mt-2 max-w-xl break-words whitespace-pre-wrap">{trip.description}</p>
               )}
             </div>
-            <div className="flex gap-2">
-              <button className="btn-ghost" onClick={() => setShowEdit(true)}>✏️ 编辑</button>
+            <div className="flex gap-2 shrink-0">
+              <button className="btn-icon" onClick={() => setShowEdit(true)} aria-label="编辑旅行">
+                ✏️<span className="btn-icon-label ml-1.5">编辑</span>
+              </button>
               <button
-                className="btn-ghost hover:!text-red-500"
+                className="btn-icon hover:!text-red-500"
                 onClick={handleDelete}
+                aria-label="删除旅行"
               >
-                🗑️ 删除
+                🗑️<span className="btn-icon-label ml-1.5">删除</span>
               </button>
             </div>
           </div>
@@ -138,23 +141,26 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      {/* Tab 切换：窄屏下允许横向滚动，避免文字挤压换行撑破布局 */}
-      <div className="flex gap-2 p-1.5 bg-white/60 rounded-2xl w-full sm:w-fit overflow-x-auto no-scrollbar">
+      {/* Tab 切换：三项均分宽度，窄屏下文字更短并把数字收成小圆点角标，
+          避免"每日规划 (11)"这类长文案在小屏上挤压变形或撑破容器 */}
+      <div className="flex gap-1 sm:gap-2 p-1.5 bg-white/60 rounded-2xl">
         {([
-          { k: 'plan', label: '📅 每日规划', n: trip.activities.length },
-          { k: 'budget', label: '💸 预算花销', n: trip.expenses.length },
-          { k: 'notes', label: '📝 旅行记录', n: trip.notes.length },
+          { k: 'plan', label: '每日规划', shortLabel: '规划', emoji: '📅', n: trip.activities.length },
+          { k: 'budget', label: '预算花销', shortLabel: '花销', emoji: '💸', n: trip.expenses.length },
+          { k: 'notes', label: '旅行记录', shortLabel: '记录', emoji: '📝', n: trip.notes.length },
         ] as const).map((t) => (
           <button
             key={t.k}
             onClick={() => setTab(t.k)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap shrink-0 ${
+            className={`relative flex-1 sm:flex-none px-2 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
               tab === t.k
                 ? 'bg-gradient-to-r from-brand-pink to-brand-orange text-white shadow-glow'
                 : 'text-gray-500 hover:bg-white'
             }`}
           >
-            {t.label} {t.n > 0 && <span className="opacity-70">({t.n})</span>}
+            {t.emoji} <span className="sm:hidden">{t.shortLabel}</span>
+            <span className="hidden sm:inline">{t.label}</span>
+            {t.n > 0 && <span className="ml-1 opacity-70">({t.n})</span>}
           </button>
         ))}
       </div>
@@ -335,20 +341,20 @@ function PlanTab({
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         {dayGroups.map(({ day, dayStr, items, conflictIds }, idx) => (
           <DroppableDay key={day} id={`day:${dayStr}`}>
-            <div className="card p-5">
+            <div className="card p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="w-9 h-9 rounded-2xl bg-gradient-to-br from-brand-pink to-brand-orange text-white flex items-center justify-center font-bold text-sm">
+                  <span className="shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-2xl bg-gradient-to-br from-brand-pink to-brand-orange text-white flex items-center justify-center font-bold text-xs sm:text-sm">
                     D{idx + 1}
                   </span>
                   <div>
-                    <div className="font-bold text-gray-800">第 {idx + 1} 天</div>
+                    <div className="font-bold text-gray-800 text-sm sm:text-base">第 {idx + 1} 天</div>
                     <div className="text-xs text-gray-400">{fmtMonthDay(day)}</div>
                   </div>
                 </div>
                 <button
                   onClick={() => openAdd(day)}
-                  className="text-sm text-brand-pink hover:underline"
+                  className="shrink-0 text-sm text-brand-pink hover:underline"
                 >
                   ＋ 添加
                 </button>
@@ -443,21 +449,24 @@ function SortableActivityItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 p-3 rounded-2xl hover:bg-gray-50 group transition-colors ${
+      className={`flex items-start gap-1.5 sm:gap-2 p-2.5 sm:p-3 rounded-2xl hover:bg-gray-50 group transition-colors ${
         isDragging ? 'opacity-50 shadow-soft bg-white z-10' : ''
       } ${conflict ? 'bg-red-50/70 hover:bg-red-50' : ''}`}
     >
+      {/* 拖拽手柄 + 勾选框：移动端收窄尺寸，减少对标题可用宽度的挤压 */}
       <button
         {...attributes}
         {...listeners}
-        className="shrink-0 w-8 h-8 -ml-1.5 flex items-center justify-center text-lg text-gray-300 hover:text-gray-400 cursor-grab active:cursor-grabbing touch-none"
+        aria-label="拖拽排序 / 拖到其他天"
         title="拖拽排序 / 拖到其他天"
+        className="shrink-0 w-5 sm:w-8 h-8 -ml-1 sm:-ml-1.5 flex items-center justify-center text-base sm:text-lg text-gray-300 hover:text-gray-400 cursor-grab active:cursor-grabbing touch-none mt-0.5"
       >
         ⠿
       </button>
       <button
         onClick={onToggleDone}
-        className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs transition-colors ${
+        aria-label={a.done ? '标记为未完成' : '标记为已完成'}
+        className={`shrink-0 w-5 h-5 sm:w-6 sm:h-6 mt-1 rounded-full border-2 flex items-center justify-center text-xs transition-colors ${
           a.done
             ? 'bg-brand-green border-brand-green text-white'
             : 'border-gray-300 text-transparent hover:border-brand-pink'
@@ -466,32 +475,35 @@ function SortableActivityItem({
         ✓
       </button>
       <span
-        className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+        className="shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-base sm:text-lg"
         style={{ background: cat.color + '22' }}
       >
         {cat.emoji}
       </span>
-      <div className="flex-1 min-w-0">
-        <div className={`font-medium truncate ${a.done ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-          {a.startTime && (
-            <span className={conflict ? 'text-red-500 mr-2' : 'text-brand-pink mr-2'}>
-              {a.startTime}
-              {a.endTime ? `–${a.endTime}` : ''}
-            </span>
-          )}
+      {/* 文字区：标题允许换行完整展示，不再单行截断成"北..."这种半截文案；
+          时间戳独占一行放在标题上方，避免和标题在窄屏上抢宽度 */}
+      <div className="flex-1 min-w-0 pt-0.5">
+        {a.startTime && (
+          <div className={`text-xs font-semibold mb-0.5 ${conflict ? 'text-red-500' : 'text-brand-pink'}`}>
+            {a.startTime}
+            {a.endTime ? `–${a.endTime}` : ''}
+            {conflict && <span className="ml-1.5 text-red-500">⚠️ 时间冲突</span>}
+          </div>
+        )}
+        <div className={`font-medium break-words ${a.done ? 'line-through text-gray-400' : 'text-gray-800'}`}>
           {a.title}
-          {conflict && <span className="ml-1.5 text-xs text-red-500">⚠️ 时间冲突</span>}
+          {conflict && !a.startTime && <span className="ml-1.5 text-xs text-red-500">⚠️ 时间冲突</span>}
         </div>
-        <div className="text-xs text-gray-400 flex gap-2 flex-wrap">
+        <div className="text-xs text-gray-400 flex gap-2 flex-wrap mt-0.5">
           <span>{cat.label}</span>
           {a.location && <span>· 📍{a.location}</span>}
           {a.cost > 0 && <span>· {fmtMoney(a.cost)}</span>}
           {a.note && <span>· {a.note}</span>}
         </div>
       </div>
-      <div className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-1">
-        <button onClick={onEdit} aria-label="编辑行程" className="text-gray-400 hover:text-brand-blue text-base sm:text-sm p-1.5 sm:px-1 sm:py-0">✏️</button>
-        <button onClick={onRemove} aria-label="删除行程" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:px-1 sm:py-0">🗑️</button>
+      <div className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-0.5 sm:gap-1">
+        <button onClick={onEdit} aria-label="编辑行程" className="text-gray-400 hover:text-brand-blue text-sm p-1.5 sm:px-1 sm:py-0">✏️</button>
+        <button onClick={onRemove} aria-label="删除行程" className="text-gray-400 hover:text-red-500 text-sm p-1.5 sm:px-1 sm:py-0">🗑️</button>
       </div>
     </div>
   );
@@ -535,15 +547,15 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
   return (
     <div className="space-y-5 animate-fade-up">
       {/* 预算概览 */}
-      <div className="card p-5">
-        <div className="flex items-end justify-between mb-2">
-          <div>
-            <div className="text-sm text-gray-400">已花费</div>
-            <div className={`text-3xl font-extrabold ${over ? 'text-red-500' : 'text-gray-800'}`}>
+      <div className="card p-4 sm:p-5">
+        <div className="flex items-end justify-between gap-3 mb-2">
+          <div className="min-w-0">
+            <div className="text-xs sm:text-sm text-gray-400">已花费</div>
+            <div className={`text-2xl sm:text-3xl font-extrabold truncate ${over ? 'text-red-500' : 'text-gray-800'}`}>
               {fmtMoney(total)}
             </div>
           </div>
-          <div className="text-right text-sm text-gray-400">
+          <div className="text-right text-xs sm:text-sm text-gray-400 shrink-0">
             预算 {fmtMoney(trip.budget)}
             <div className={over ? 'text-red-500' : 'text-brand-green'}>
               {over ? `超支 ${fmtMoney(total - trip.budget)}` : `剩余 ${fmtMoney(trip.budget - total)}`}
@@ -691,16 +703,16 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
       ) : (
         <div className="columns-1 sm:columns-2 gap-5 space-y-5">
           {trip.notes.map((n) => (
-            <div key={n.id} className="card p-5 break-inside-avoid group">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{n.mood}</span>
-                  <div>
-                    {n.title && <div className="font-bold text-gray-800">{n.title}</div>}
+            <div key={n.id} className="card p-4 sm:p-5 break-inside-avoid group">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-2xl shrink-0">{n.mood}</span>
+                  <div className="min-w-0">
+                    {n.title && <div className="font-bold text-gray-800 truncate">{n.title}</div>}
                     <div className="text-xs text-gray-400">{fmtDate(n.date)}</div>
                   </div>
                 </div>
-                <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-1">
+                <div className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-1">
                   <button onClick={() => { setEditing(n); setShowForm(true); }} aria-label="编辑记录" className="text-gray-400 hover:text-brand-blue text-base sm:text-sm p-1.5 sm:p-1">✏️</button>
                   <button onClick={() => remove(n)} aria-label="删除记录" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:p-1">🗑️</button>
                 </div>
