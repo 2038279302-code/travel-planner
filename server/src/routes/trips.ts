@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TripRepo, ExpenseRepo } from '../db/repositories';
-import { validateBody, tripSchema, tripUpdateSchema } from '../lib/validate';
+import { validateBody, tripSchema, tripUpdateSchema, tripWithActivitiesSchema } from '../lib/validate';
 
 const router = Router();
 
@@ -44,6 +44,39 @@ router.get('/stats/overview', (_req, res, next) => {
       totalSpent,
       totalBudget,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** AI 一键保存：批量创建旅行 + 行程项（P0-5） */
+router.post('/with-activities', validateBody(tripWithActivitiesSchema), (req, res, next) => {
+  try {
+    const { trip: t, activities } = req.body;
+    const result = TripRepo.createWithActivities(
+      {
+        title: t.title,
+        type: t.type,
+        destination: t.destination,
+        description: t.description ?? null,
+        coverColor: t.coverColor,
+        coverEmoji: t.coverEmoji,
+        startDate: new Date(t.startDate).toISOString(),
+        endDate: new Date(t.endDate).toISOString(),
+        budget: t.budget,
+        status: t.status,
+      },
+      activities.map((a: any) => ({
+        dayDate: new Date(a.dayDate).toISOString(),
+        startTime: a.startTime ?? null,
+        title: a.title,
+        category: a.category,
+        note: a.note ?? null,
+        cost: a.cost,
+        order: a.order,
+      }))
+    );
+    res.status(201).json(result);
   } catch (err) {
     next(err);
   }

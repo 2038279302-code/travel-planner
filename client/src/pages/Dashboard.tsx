@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { TripApi } from '../api';
+import type { ApiError } from '../api';
 import type { Trip, TripType } from '../types';
 import { TRIP_TYPE, TRIP_STATUS } from '../utils/constants';
 import { fmtMonthDay, tripDays, fmtMoney } from '../utils/format';
@@ -36,8 +37,9 @@ export default function Dashboard() {
       setShowCreate(false);
       toast('旅行创建成功，开始规划吧！🎉');
       refresh();
-    } catch {
-      toast('创建失败，请重试', 'error');
+    } catch (err) {
+      const apiErr = err as Partial<ApiError> | undefined;
+      toast(apiErr?.message || '创建失败，请重试', 'error');
     }
   };
 

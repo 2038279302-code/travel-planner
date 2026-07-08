@@ -4,24 +4,45 @@ import fs from 'node:fs';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 
-import { initDb } from './db';
+import { initDb, persist } from './db';
 import tripsRouter from './routes/trips';
 import activitiesRouter from './routes/activities';
 import expensesRouter from './routes/expenses';
 import notesRouter from './routes/notes';
 import aiRouter from './routes/ai';
+import { requireAccessCode, verifyAccessCode, authEnabled } from './lib/auth';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const isProd = process.env.NODE_ENV === 'production';
 
-app.use(cors());
+// 生产环境下若未限制 CORS 白名单，会在无认证的情况下进一步放大攻击面（P1-9）。
+// 未显式配置 CORS_ORIGIN 时，生产环境默认不开放跨域（同源访问不受影响）。
+const corsOrigin = process.env.CORS_ORIGIN;
+app.use(
+  cors(
+    corsOrigin
+      ? { origin: corsOrigin.split(',').map((o) => o.trim()) }
+      : isProd
+        ? { origin: false }
+        : {}
+  )
+);
 app.use(express.json({ limit: '10mb' }));
 
-// 健康检查
+// 健康检查（无需鉴权，供部署平台探活）
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
+
+// 访问口令校验接口（无需鉴权，否则前端无法完成首次校验）
+app.post('/api/auth/verify', express.json(), verifyAccessCode);
+app.get('/api/auth/status', (_req, res) => {
+  res.json({ authEnabled });
+});
+
+// 除以上接口外，其余所有 /api 路由都需要携带正确的访问口令（P0-1）
+app.use('/api', requireAccessCode);
 
 // 业务路由
 app.use('/api/trips', tripsRouter);

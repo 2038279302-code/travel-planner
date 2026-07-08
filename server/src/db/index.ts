@@ -8,6 +8,15 @@ const DB_PATH =
 
 let db: Database;
 let saveTimer: NodeJS.Timeout | null = null;
+// 是否存在尚未落盘的变更（用于进程退出前判断是否需要强制 flush）
+let dirty = false;
+// 防抖第一次触发的时间戳：用于实现"最大延迟上限"，避免持续高频写入导致长时间不落盘
+let firstPendingWriteAt: number | null = null;
+
+/** 防抖最长等待时间：即使写入一直很密集，也保证至多这么久就会落盘一次 */
+const MAX_DEBOUNCE_MS = 2000;
+/** 常规防抖时间：合并短时间内的连续写入，降低磁盘 IO */
+const DEBOUNCE_MS = 150;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS Trip (
@@ -99,21 +108,68 @@ export function getDb(): Database {
   return db;
 }
 
-/** 立即将内存数据库写入文件 */
+/** 立即将内存数据库写入文件（先写临时文件再原子性 rename，避免写到一半进程被杀导致文件损坏） */
 export function persist(): void {
   if (!db) return;
   const data = db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
+  const tmpPath = `${DB_PATH}.tmp`;
+  fs.writeFileSync(tmpPath, Buffer.from(data));
+  fs.renameSync(tmpPath, DB_PATH);
+  dirty = false;
+  firstPendingWriteAt = null;
 }
 
-/** 防抖持久化：高频写入时合并落盘，降低 IO */
+/**
+ * 防抖持久化：高频写入时合并落盘，降低 IO。
+ * 在原有防抖基础上增加"最大等待上限"：如果写入持续密集导致防抖计时器不断被重置，
+ * 也保证至多 MAX_DEBOUNCE_MS 后必然落盘一次，避免长时间只停留在内存中（P0-2）。
+ */
 export function schedulePersist(): void {
+  dirty = true;
+  const now = Date.now();
+  if (firstPendingWriteAt === null) firstPendingWriteAt = now;
+
   if (saveTimer) clearTimeout(saveTimer);
+
+  const elapsedSinceFirstPending = now - firstPendingWriteAt;
+  const delay = Math.min(DEBOUNCE_MS, Math.max(0, MAX_DEBOUNCE_MS - elapsedSinceFirstPending));
+
   saveTimer = setTimeout(() => {
     persist();
     saveTimer = null;
-  }, 150);
+  }, delay);
 }
+
+/** 进程退出前强制同步落盘，避免最后一批变更因防抖延迟而丢失（P0-2） */
+function flushOnExit(signal?: string) {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (dirty) {
+    try {
+      persist();
+      console.log(`[DB] 进程退出前已强制落盘${signal ? `（信号: ${signal}）` : ''}`);
+    } catch (err) {
+      console.error('[DB] 退出前落盘失败：', err);
+    }
+  }
+}
+
+process.on('SIGINT', () => {
+  flushOnExit('SIGINT');
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  flushOnExit('SIGTERM');
+  process.exit(0);
+});
+process.on('beforeExit', () => flushOnExit('beforeExit'));
+process.on('uncaughtException', (err) => {
+  console.error('[Fatal] 未捕获异常：', err);
+  flushOnExit('uncaughtException');
+  process.exit(1);
+});
 
 // ===== 查询辅助：将结果转为对象数组 =====
 
@@ -141,8 +197,42 @@ export function queryOne<T = Record<string, unknown>>(
 
 export function run(sql: string, params: unknown[] = []): void {
   const stmt = getDb().prepare(sql);
-  stmt.bind(params as any);
-  stmt.step();
-  stmt.free();
+  try {
+    stmt.bind(params as any);
+    stmt.step();
+  } finally {
+    stmt.free();
+  }
   schedulePersist();
+}
+
+/**
+ * 在单个 SQLite 事务内执行一组写操作：全部成功才提交并落盘，任意一步失败则整体回滚，
+ * 避免"半成品"数据（P0-2 事务保护 / P0-5 AI 批量保存的基础设施）。
+ *
+ * 注意：事务内部应调用 runRaw（不触发防抖落盘），待事务提交后由本函数统一 schedulePersist 一次。
+ */
+export function runInTransaction<T>(fn: () => T): T {
+  const database = getDb();
+  database.run('BEGIN TRANSACTION;');
+  try {
+    const result = fn();
+    database.run('COMMIT;');
+    schedulePersist();
+    return result;
+  } catch (err) {
+    database.run('ROLLBACK;');
+    throw err;
+  }
+}
+
+/** 事务内部使用的写操作：不单独触发防抖落盘（由外层事务统一处理） */
+export function runRaw(sql: string, params: unknown[] = []): void {
+  const stmt = getDb().prepare(sql);
+  try {
+    stmt.bind(params as any);
+    stmt.step();
+  } finally {
+    stmt.free();
+  }
 }

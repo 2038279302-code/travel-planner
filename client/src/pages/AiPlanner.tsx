@@ -1,11 +1,18 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AiRecommendResult, TripType, ActivityCategory } from '../types';
-import { AiApi, TripApi, ActivityApi } from '../api';
+import { AiApi, TripApi } from '../api';
 import { useStore } from '../store/useStore';
 import { TRIP_TYPE, ACTIVITY_CATEGORY, COVER_EMOJIS, COVER_COLORS } from '../utils/constants';
 import { fmtMoney } from '../utils/format';
 import FieldError from '../components/FieldError';
+import type { ApiError } from '../api';
+
+/** 从统一错误对象中提取人类可读的提示文案，兜底为通用提示 */
+function errMsg(err: unknown, fallback: string): string {
+  const apiErr = err as Partial<ApiError> | undefined;
+  return apiErr?.message || fallback;
+}
 
 // 局部重新生成的预设调整指令
 const REGEN_PRESETS = [
@@ -51,14 +58,14 @@ export default function AiPlanner() {
         budget: budget ? Number(budget) : undefined,
       });
       setResult(res);
-    } catch {
-      toast('生成失败，请稍后再试', 'error');
+    } catch (err) {
+      toast(errMsg(err, '生成失败，请稍后再试'), 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // 一键把 AI 结果保存为正式旅行
+  // 一键把 AI 结果保存为正式旅行（P0-5: 改为批量事务接口，避免中途失败留下半成品数据）
   const saveAsTrip = async () => {
     if (!result) return;
     setSaving(true);
@@ -68,21 +75,16 @@ export default function AiPlanner() {
       const end = new Date(start);
       end.setDate(end.getDate() + result.days.length - 1);
 
-      const trip = await TripApi.create({
-        title: `${result.destination}${TRIP_TYPE[type].label}`,
-        type,
-        destination: result.destination,
-        description: result.summary,
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-        // 用户未填预算参考时，用 AI 预估总花费兜底，避免预算页出现"0 预算"的失真状态
-        budget: budget ? Number(budget) : result.estimatedTotalCost,
-        status: 'planning',
-        coverColor: COVER_COLORS[Math.floor(Math.random() * COVER_COLORS.length)],
-        coverEmoji: COVER_EMOJIS[Math.floor(Math.random() * COVER_EMOJIS.length)],
-      });
-
-      // 写入每个行程项
+      // 构建批量行程项数据
+      const activities: Array<{
+        dayDate: string;
+        startTime: string | null;
+        title: string;
+        category: string;
+        note: string | null;
+        cost: number;
+        order: number;
+      }> = [];
       for (const d of result.days) {
         const dayDate = new Date(start);
         dayDate.setDate(dayDate.getDate() + (d.day - 1));
@@ -91,21 +93,37 @@ export default function AiPlanner() {
           const cat = ((ACTIVITY_CATEGORY as any)[item.category]
             ? item.category
             : 'other') as ActivityCategory;
-          await ActivityApi.create(trip.id, {
+          activities.push({
             dayDate: dayDate.toISOString(),
-            startTime: item.time,
+            startTime: item.time ?? null,
             title: item.title,
             category: cat,
-            note: item.note,
+            note: item.note ?? null,
             cost: item.cost || 0,
             order: i,
           });
         }
       }
+
+      const trip = await TripApi.createWithActivities({
+        trip: {
+          title: `${result.destination}${TRIP_TYPE[type].label}`,
+          type,
+          destination: result.destination,
+          description: result.summary,
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          budget: budget ? Number(budget) : result.estimatedTotalCost,
+          status: 'planning',
+          coverColor: COVER_COLORS[Math.floor(Math.random() * COVER_COLORS.length)],
+          coverEmoji: COVER_EMOJIS[Math.floor(Math.random() * COVER_EMOJIS.length)],
+        },
+        activities,
+      });
       toast('已保存为旅行，去看看吧！🎉');
       navigate(`/trips/${trip.id}`);
-    } catch {
-      toast('保存失败，请重试', 'error');
+    } catch (err) {
+      toast(errMsg(err, '保存失败，请重试'), 'error');
     } finally {
       setSaving(false);
     }
@@ -143,8 +161,8 @@ export default function AiPlanner() {
         };
       });
       toast(`Day ${dayNum} 已重新安排 ✨`);
-    } catch {
-      toast('重新生成失败，请稍后再试', 'error');
+    } catch (err) {
+      toast(errMsg(err, '重新生成失败，请稍后再试'), 'error');
     } finally {
       setRegenDay(null);
     }

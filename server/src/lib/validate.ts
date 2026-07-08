@@ -35,6 +35,26 @@ export const tripSchema = z.object({
 
 export const tripUpdateSchema = tripSchema.partial();
 
+/** AI 一键保存：旅行 + 行程项批量创建 */
+export const tripWithActivitiesSchema = z.object({
+  trip: tripSchema,
+  activities: z
+    .array(
+      z.object({
+        dayDate: z.string().min(1, '日期不能为空'),
+        startTime: z.string().optional().nullable(),
+        title: z.string().min(1, '标题不能为空').max(200),
+        category: z
+          .enum(['sightseeing', 'food', 'transport', 'hotel', 'meeting', 'other'])
+          .default('sightseeing'),
+        note: z.string().max(1000).optional().nullable(),
+        cost: z.number().min(0).default(0),
+        order: z.number().int().default(0),
+      })
+    )
+    .max(200, '行程项不能超过 200 条'),
+});
+
 export const activitySchema = z.object({
   dayDate: z.string().min(1, '日期不能为空'),
   startTime: z.string().optional().nullable(),
@@ -81,7 +101,7 @@ export const noteSchema = z.object({
   content: z.string().min(1, '内容不能为空'),
   mood: z.string().default('😊'),
   date: z.string().optional().nullable(),
-  images: z.array(z.string()).default([]),
+  images: z.array(z.string().max(500, '图片链接过长')).max(9, '最多上传 9 张图片').default([]),
 });
 
 export const noteUpdateSchema = noteSchema.partial();

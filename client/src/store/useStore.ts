@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import type { Trip, Stats } from '../types';
 import { TripApi } from '../api';
+import type { ApiError } from '../api';
+
+/** 从统一错误对象中提取人类可读的提示文案 */
+function errMsg(err: unknown, fallback: string): string {
+  const apiErr = err as Partial<ApiError> | undefined;
+  return apiErr?.message || fallback;
+}
 
 interface ToastState {
   id: number;
@@ -33,14 +40,22 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const trips = await TripApi.list();
       set({ trips });
+    } catch (err) {
+      // 列表加载失败时弹 toast 让用户感知，而非静默失败（P0-4）
+      get().toast(errMsg(err, '加载旅行列表失败'), 'error');
     } finally {
       set({ loading: false });
     }
   },
 
   fetchStats: async () => {
-    const stats = await TripApi.stats();
-    set({ stats });
+    try {
+      const stats = await TripApi.stats();
+      set({ stats });
+    } catch (err) {
+      // 统计数据非关键，仅 toast 提示，不阻塞页面（P0-4）
+      get().toast(errMsg(err, '加载统计数据失败'), 'error');
+    }
   },
 
   refresh: async () => {

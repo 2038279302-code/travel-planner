@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { InspirationCard } from '../types';
 import { AiApi } from '../api';
+import type { ApiError } from '../api';
+import { useStore } from '../store/useStore';
 import { fmtLikes } from '../utils/format';
 
 const HOT = ['京都', '大理', '成都', '曼谷', '上海', '巴厘岛', '西安'];
 
 export default function Discover() {
+  const { toast } = useStore();
   const [cards, setCards] = useState<InspirationCard[]>([]);
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(true);
@@ -15,6 +18,9 @@ export default function Discover() {
     try {
       const res = await AiApi.inspirations(kw);
       setCards(res.cards);
+    } catch (err) {
+      const apiErr = err as Partial<ApiError> | undefined;
+      toast(apiErr?.message || '加载灵感失败，请重试', 'error');
     } finally {
       setLoading(false);
     }

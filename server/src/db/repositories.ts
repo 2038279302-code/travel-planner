@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { queryAll, queryOne, run } from './index';
+import { queryAll, queryOne, run, runRaw, runInTransaction } from './index';
 
 const now = () => new Date().toISOString();
 const id = () => randomUUID();
@@ -119,11 +119,49 @@ export const TripRepo = {
   },
 
   remove(tripId: string): void {
-    // 手动级联删除（sql.js 默认外键约束可靠性有限，显式删除更稳妥）
-    run('DELETE FROM Activity WHERE tripId = ?', [tripId]);
-    run('DELETE FROM Expense WHERE tripId = ?', [tripId]);
-    run('DELETE FROM Note WHERE tripId = ?', [tripId]);
-    run('DELETE FROM Trip WHERE id = ?', [tripId]);
+    // 手动级联删除（sql.js 默认外键约束可靠性有限，显式删除更稳妥）；
+    // 包一层事务，避免删到一半失败（如中途异常）留下"半删除"的孤儿数据（P0-2）。
+    runInTransaction(() => {
+      runRaw('DELETE FROM Activity WHERE tripId = ?', [tripId]);
+      runRaw('DELETE FROM Expense WHERE tripId = ?', [tripId]);
+      runRaw('DELETE FROM Note WHERE tripId = ?', [tripId]);
+      runRaw('DELETE FROM Trip WHERE id = ?', [tripId]);
+    });
+  },
+
+  /** 批量创建旅行 + 行程项（AI 一键保存），事务保护：要么全部成功要么全部回滚（P0-5） */
+  createWithActivities(
+    tripInput: Omit<Trip, 'id' | 'createdAt' | 'updatedAt'>,
+    activitiesInput: Array<{
+      dayDate: string;
+      startTime: string | null;
+      title: string;
+      category: string;
+      note: string | null;
+      cost: number;
+      order: number;
+    }>
+  ): Trip & { activities: Activity[] } {
+    return runInTransaction(() => {
+      const trip = this.create(tripInput);
+      const activities: Activity[] = [];
+      for (const a of activitiesInput) {
+        const row = ActivityRepo.create(trip.id, {
+          dayDate: a.dayDate,
+          startTime: a.startTime,
+          endTime: null,
+          title: a.title,
+          category: a.category,
+          location: null,
+          note: a.note,
+          cost: a.cost,
+          done: false,
+          order: a.order,
+        });
+        activities.push(row);
+      }
+      return { ...trip, activities };
+    });
   },
 };
 
@@ -188,19 +226,22 @@ export const ActivityRepo = {
 
   /** 拖拽排序：批量更新一组行程项的日期与顺序（同天重排 / 跨天移动均走这里） */
   reorder(items: { id: string; dayDate: string; order: number }[]): Activity[] {
-    const updated: Activity[] = [];
-    for (const it of items) {
-      const existing = this.find(it.id);
-      if (!existing) continue;
-      const m = { ...existing, dayDate: it.dayDate, order: it.order };
-      run(`UPDATE Activity SET dayDate=?, "order"=? WHERE id=?`, [
-        m.dayDate,
-        m.order,
-        it.id,
-      ]);
-      updated.push(m);
-    }
-    return updated;
+    // 事务保护：保证一批拖拽排序要么全部生效要么全部不生效，避免中途失败导致排序错乱（P0-2）
+    return runInTransaction(() => {
+      const updated: Activity[] = [];
+      for (const it of items) {
+        const existing = this.find(it.id);
+        if (!existing) continue;
+        const m = { ...existing, dayDate: it.dayDate, order: it.order };
+        runRaw(`UPDATE Activity SET dayDate=?, "order"=? WHERE id=?`, [
+          m.dayDate,
+          m.order,
+          it.id,
+        ]);
+        updated.push(m);
+      }
+      return updated;
+    });
   },
 };
 

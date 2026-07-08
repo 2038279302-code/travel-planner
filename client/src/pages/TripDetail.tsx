@@ -34,12 +34,20 @@ import {
   isTimeOverlap,
 } from '../utils/format';
 import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import TripForm from '../components/TripForm';
 import ActivityForm from '../components/ActivityForm';
 import ExpenseForm from '../components/ExpenseForm';
 import NoteForm from '../components/NoteForm';
 import { useLockBodyScroll } from '../utils/useLockBodyScroll';
 import { createPortal } from 'react-dom';
+import type { ApiError } from '../api';
+
+/** 从统一错误对象中提取人类可读的提示文案，兜底为通用提示 */
+function errMsg(err: unknown, fallback: string): string {
+  const apiErr = err as Partial<ApiError> | undefined;
+  return apiErr?.message || fallback;
+}
 
 type Tab = 'plan' | 'budget' | 'notes';
 
@@ -52,6 +60,9 @@ export default function TripDetailPage() {
   const [loading, setLoading] = useState(true);
 
   const [showEdit, setShowEdit] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -74,17 +85,33 @@ export default function TripDetailPage() {
   if (!trip) return null;
 
   const handleUpdate = async (data: Partial<Trip>) => {
-    await TripApi.update(trip.id, data);
-    setShowEdit(false);
-    toast('已更新');
-    load();
+    setUpdating(true);
+    try {
+      await TripApi.update(trip.id, data);
+      setShowEdit(false);
+      toast('已更新');
+      load();
+    } catch (err) {
+      // 失败时不关闭编辑弹窗，保留用户已填内容，避免误以为保存成功（P0-4）
+      toast(errMsg(err, '更新失败，请重试'), 'error');
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleDelete = async () => {
-    if (!confirm('确定要删除这趟旅行吗？所有行程、花销和记录都会被删除。')) return;
-    await TripApi.remove(trip.id);
-    toast('旅行已删除');
-    navigate('/');
+    setDeleting(true);
+    try {
+      await TripApi.remove(trip.id);
+      toast('旅行已删除');
+      navigate('/');
+    } catch (err) {
+      // 失败时保持在当前页、关闭确认弹窗让用户看到错误提示并可重试（P0-4）
+      toast(errMsg(err, '删除失败，请重试'), 'error');
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const st = TRIP_STATUS[trip.status];
@@ -125,7 +152,7 @@ export default function TripDetailPage() {
               </button>
               <button
                 className="btn-icon hover:!text-red-500"
-                onClick={handleDelete}
+                onClick={() => setShowDeleteConfirm(true)}
                 aria-label="删除旅行"
               >
                 🗑️<span className="btn-icon-label ml-1.5">删除</span>
@@ -169,9 +196,24 @@ export default function TripDetailPage() {
       {tab === 'budget' && <BudgetTab trip={trip} reload={load} />}
       {tab === 'notes' && <NotesTab trip={trip} reload={load} />}
 
-      <Modal open={showEdit} title="✏️ 编辑旅行" onClose={() => setShowEdit(false)}>
+      <Modal open={showEdit} title="✏️ 编辑旅行" onClose={() => !updating && setShowEdit(false)}>
         <TripForm initial={trip} onSubmit={handleUpdate} onCancel={() => setShowEdit(false)} />
       </Modal>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="🗑️ 删除这趟旅行？"
+        message={`「${trip.title}」删除后无法恢复，请谨慎操作。`}
+        impactList={[
+          `${trip.activities.length} 条行程安排`,
+          `${trip.expenses.length} 笔花销记录`,
+          `${trip.notes.length} 条旅行记录${trip.notes.some((n) => n.images.length > 0) ? '（含图片）' : ''}`,
+        ].filter((_, i) => [trip.activities.length, trip.expenses.length, trip.notes.length][i] > 0)}
+        confirmLabel="确认删除"
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }
@@ -190,6 +232,9 @@ function PlanTab({
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Activity | null>(null);
   const [formDay, setFormDay] = useState<string | undefined>();
+  const [submitting, setSubmitting] = useState(false);
+  const [removing, setRemoving] = useState<Activity | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
   // 拖拽过程中的本地乐观状态：拖拽结束前用它渲染，避免等待接口往返造成的闪烁
   const [localActivities, setLocalActivities] = useState<Activity[] | null>(null);
 
@@ -215,27 +260,46 @@ function PlanTab({
   };
 
   const handleSubmit = async (data: Partial<Activity>) => {
-    if (editing) {
-      await ActivityApi.update(trip.id, editing.id, data);
-      toast('行程已更新');
-    } else {
-      await ActivityApi.create(trip.id, data);
-      toast('行程已添加 🎉');
+    setSubmitting(true);
+    try {
+      if (editing) {
+        await ActivityApi.update(trip.id, editing.id, data);
+        toast('行程已更新');
+      } else {
+        await ActivityApi.create(trip.id, data);
+        toast('行程已添加 🎉');
+      }
+      setShowForm(false);
+      reload();
+    } catch (err) {
+      // 保留表单打开状态和已填内容，避免用户以为保存成功（P0-4）
+      toast(errMsg(err, editing ? '更新失败，请重试' : '添加失败，请重试'), 'error');
+    } finally {
+      setSubmitting(false);
     }
-    setShowForm(false);
-    reload();
   };
 
   const toggleDone = async (a: Activity) => {
-    await ActivityApi.update(trip.id, a.id, { done: !a.done });
-    reload();
+    try {
+      await ActivityApi.update(trip.id, a.id, { done: !a.done });
+      reload();
+    } catch (err) {
+      toast(errMsg(err, '操作失败，请重试'), 'error');
+    }
   };
 
   const remove = async (a: Activity) => {
-    if (!confirm('删除这个行程项？')) return;
-    await ActivityApi.remove(trip.id, a.id);
-    toast('已删除');
-    reload();
+    setRemoveLoading(true);
+    try {
+      await ActivityApi.remove(trip.id, a.id);
+      toast('已删除');
+      setRemoving(null);
+      reload();
+    } catch (err) {
+      toast(errMsg(err, '删除失败，请重试'), 'error');
+    } finally {
+      setRemoveLoading(false);
+    }
   };
 
   // 按天分组，并计算每天内的时间冲突集合
@@ -381,7 +445,7 @@ function PlanTab({
                         conflict={conflictIds.has(a.id)}
                         onToggleDone={() => toggleDone(a)}
                         onEdit={() => openEdit(a)}
-                        onRemove={() => remove(a)}
+                        onRemove={() => setRemoving(a)}
                       />
                     ))}
                   </div>
@@ -405,6 +469,16 @@ function PlanTab({
           onCancel={() => setShowForm(false)}
         />
       </Modal>
+
+      <ConfirmDialog
+        open={!!removing}
+        title="🗑️ 删除这个行程项？"
+        message={removing ? `「${removing.title}」删除后无法恢复。` : ''}
+        confirmLabel="确认删除"
+        loading={removeLoading}
+        onConfirm={() => removing && remove(removing)}
+        onCancel={() => setRemoving(null)}
+      />
     </div>
   );
 }
@@ -514,6 +588,9 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
   const { toast } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [removing, setRemoving] = useState<Expense | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
 
   const total = trip.expenses.reduce((s, e) => s + e.amount, 0);
   const pct = trip.budget > 0 ? Math.min(100, (total / trip.budget) * 100) : 0;
@@ -526,22 +603,36 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
   }, {});
 
   const handleSubmit = async (data: Partial<Expense>) => {
-    if (editing) {
-      await ExpenseApi.update(trip.id, editing.id, data);
-      toast('已更新');
-    } else {
-      await ExpenseApi.create(trip.id, data);
-      toast('花销已记录 💸');
+    setSubmitting(true);
+    try {
+      if (editing) {
+        await ExpenseApi.update(trip.id, editing.id, data);
+        toast('已更新');
+      } else {
+        await ExpenseApi.create(trip.id, data);
+        toast('花销已记录 💸');
+      }
+      setShowForm(false);
+      reload();
+    } catch (err) {
+      toast(errMsg(err, editing ? '更新失败，请重试' : '添加失败，请重试'), 'error');
+    } finally {
+      setSubmitting(false);
     }
-    setShowForm(false);
-    reload();
   };
 
   const remove = async (e: Expense) => {
-    if (!confirm('删除这条花销？')) return;
-    await ExpenseApi.remove(trip.id, e.id);
-    toast('已删除');
-    reload();
+    setRemoveLoading(true);
+    try {
+      await ExpenseApi.remove(trip.id, e.id);
+      toast('已删除');
+      setRemoving(null);
+      reload();
+    } catch (err) {
+      toast(errMsg(err, '删除失败，请重试'), 'error');
+    } finally {
+      setRemoveLoading(false);
+    }
   };
 
   return (
@@ -612,7 +703,7 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
                 <div className="font-bold text-gray-700 shrink-0">{fmtMoney(e.amount)}</div>
                 <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-1 shrink-0">
                   <button onClick={() => { setEditing(e); setShowForm(true); }} aria-label="编辑花销" className="text-gray-400 hover:text-brand-blue text-base sm:text-sm p-1.5 sm:p-1">✏️</button>
-                  <button onClick={() => remove(e)} aria-label="删除花销" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:p-1">🗑️</button>
+                  <button onClick={() => setRemoving(e)} aria-label="删除花销" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:p-1">🗑️</button>
                 </div>
               </div>
             );
@@ -623,7 +714,7 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
       <Modal
         open={showForm}
         title={editing ? '✏️ 编辑花销' : '💸 记一笔'}
-        onClose={() => setShowForm(false)}
+        onClose={() => !submitting && setShowForm(false)}
       >
         <ExpenseForm
           initial={editing ?? undefined}
@@ -631,6 +722,16 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
           onCancel={() => setShowForm(false)}
         />
       </Modal>
+
+      <ConfirmDialog
+        open={!!removing}
+        title="🗑️ 删除这条花销？"
+        message={removing ? `「${removing.title}」（${fmtMoney(removing.amount)}）删除后无法恢复。` : ''}
+        confirmLabel="确认删除"
+        loading={removeLoading}
+        onConfirm={() => removing && remove(removing)}
+        onCancel={() => setRemoving(null)}
+      />
     </div>
   );
 }
@@ -640,25 +741,42 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
   const { toast } = useStore();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Note | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [removing, setRemoving] = useState<Note | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
 
   const handleSubmit = async (data: Partial<Note>) => {
-    if (editing) {
-      await NoteApi.update(trip.id, editing.id, data);
-      toast('记录已更新');
-    } else {
-      await NoteApi.create(trip.id, data);
-      toast('记录已保存 📝');
+    setSubmitting(true);
+    try {
+      if (editing) {
+        await NoteApi.update(trip.id, editing.id, data);
+        toast('记录已更新');
+      } else {
+        await NoteApi.create(trip.id, data);
+        toast('记录已保存 📝');
+      }
+      setShowForm(false);
+      reload();
+    } catch (err) {
+      toast(errMsg(err, editing ? '更新失败，请重试' : '保存失败，请重试'), 'error');
+    } finally {
+      setSubmitting(false);
     }
-    setShowForm(false);
-    reload();
   };
 
   const remove = async (n: Note) => {
-    if (!confirm('删除这条记录？')) return;
-    await NoteApi.remove(trip.id, n.id);
-    toast('已删除');
-    reload();
+    setRemoveLoading(true);
+    try {
+      await NoteApi.remove(trip.id, n.id);
+      toast('已删除');
+      setRemoving(null);
+      reload();
+    } catch (err) {
+      toast(errMsg(err, '删除失败，请重试'), 'error');
+    } finally {
+      setRemoveLoading(false);
+    }
   };
 
   const openLightbox = (images: string[], index: number) => setLightbox({ images, index });
@@ -714,7 +832,7 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
                 </div>
                 <div className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity flex gap-1">
                   <button onClick={() => { setEditing(n); setShowForm(true); }} aria-label="编辑记录" className="text-gray-400 hover:text-brand-blue text-base sm:text-sm p-1.5 sm:p-1">✏️</button>
-                  <button onClick={() => remove(n)} aria-label="删除记录" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:p-1">🗑️</button>
+                  <button onClick={() => setRemoving(n)} aria-label="删除记录" className="text-gray-400 hover:text-red-500 text-base sm:text-sm p-1.5 sm:p-1">🗑️</button>
                 </div>
               </div>
               <p className="text-gray-600 text-sm mt-3 whitespace-pre-wrap leading-relaxed">
@@ -755,7 +873,7 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
       <Modal
         open={showForm}
         title={editing ? '✏️ 编辑记录' : '📝 写旅行记录'}
-        onClose={() => setShowForm(false)}
+        onClose={() => !submitting && setShowForm(false)}
       >
         <NoteForm
           initial={editing ?? undefined}
@@ -763,6 +881,16 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
           onCancel={() => setShowForm(false)}
         />
       </Modal>
+
+      <ConfirmDialog
+        open={!!removing}
+        title="🗑️ 删除这条记录？"
+        message={removing ? `「${removing.title || '记录'}」删除后无法恢复。${removing.images.length > 0 ? '（含图片）' : ''}` : ''}
+        confirmLabel="确认删除"
+        loading={removeLoading}
+        onConfirm={() => removing && remove(removing)}
+        onCancel={() => setRemoving(null)}
+      />
 
       {lightbox &&
         createPortal(
