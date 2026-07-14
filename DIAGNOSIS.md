@@ -93,7 +93,7 @@
 - **问题**：用户可能误操作创建出"结束日期早于开始日期"的旅行；行程项、花销、记录的日期可以随意设置在旅行范围之外，导致按天分组视图、预算统计等出现数据错位。
 - **影响**：AI 推荐基于错误天数生成；"按天规划"视图逻辑错乱；预算统计可能混入无关日期的花销。
 - **建议方案**：在 `tripSchema` 增加 `.refine()` 交叉校验；在 Activity/Expense/Note 的创建更新路由中，查询所属 Trip 后校验日期字段落在 `[startDate, endDate]` 范围内（花销可考虑放宽为"允许略早于/晚于旅行范围，用于报销场景"，需产品判断是否严格限制）。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：`tripSchema`/`tripUpdateSchema` 增加 `.refine()` 交叉校验（更新时若只传单一字段，会结合数据库已有值在 `trips.ts` 路由层再次校验）；新增 `server/src/lib/tripGuard.ts` 提供 `requireTripExists` + `isDateWithinTrip`，Activity 创建/更新时校验日期落在旅行范围内（首尾各放宽 1 天）；花销/记录仅校验所属 Trip 存在，日期不强制限制在范围内（兼顾报销场景）。
 
 ### P1-2. 数字类输入（预算、花费、金额）校验薄弱，非法输入被静默转换
 - **位置**：
@@ -108,56 +108,56 @@
   1. 前端表单校验增加 `isNaN` 检查，非法输入直接拦截并提示，而不是静默 fallback 成 0；
   2. 增加合理的数值上限（如预算不超过 1000 万）与小数精度限制（最多 2 位小数）；
   3. 后端 `expenseSchema.amount` 改为 `min(0.01)` 或明确允许 0 但产品上做"免费"语义区分；`budget` 增加 `.max()` 上限校验作为服务端兜底。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：新增 `client/src/utils/validation.ts` 提供统一的 `validateNumberInput`，对 TripForm/ActivityForm/ExpenseForm/AiPlanner 的数字输入统一拦截非法字符/负数/超上限（不再静默 fallback 成 0）；后端 `tripSchema.budget`（上限 1000 万）、`activitySchema.cost`/`expenseSchema.amount`（上限 100 万）均增加 `.max()` 兜底校验。
 
 ### P1-3. 旅行状态不会根据当前日期自动流转
 - **位置**：`server/src/routes/trips.ts`、`server/src/db/repositories.ts`（TripRepo 无状态计算逻辑）
 - **问题**：Trip 的 `status`（planning/ongoing/completed）完全依赖手动设置，没有基于当前日期与旅行起止日期自动判断并更新。
 - **影响**：旅行已经在进行中，首页和详情页仍显示"规划中"，是最容易让用户觉得"产品没在维护"的细节体验问题；也直接阻塞了 ROADMAP 中 F-TRIP-02 的验收标准。
 - **建议方案**：在读取旅行列表/详情时，实时根据 `now` 与 `startDate`/`endDate` 计算展示态的状态（不一定需要写回数据库，可作为查询时的派生字段），逻辑：`now < startDate` → planning；`startDate <= now <= endDate` → ongoing；`now > endDate` → completed（除非用户手动改过状态，需要设计手动状态与自动状态的优先级关系）。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：`server/src/db/repositories.ts` 新增 `deriveStatus()`，在 `TripRepo.all()`/`findWithChildren()` 查询时派生展示状态（不回写数据库）；若用户已手动标记为 completed 则保持不变，否则按 `now` 与起止日期自动判断 planning/ongoing/completed。
 
 ### P1-4. 子资源（行程/花销/记录）创建时不校验所属旅行是否存在，可能产生孤儿数据
 - **位置**：`server/src/routes/activities.ts` 第 23-43 行、`expenses.ts` 第 18-31 行、`notes.ts` 第 18-33 行
 - **问题**：创建接口直接使用 URL 中的 `tripId` 写入子资源，没有先查询确认该 Trip 存在。
 - **影响**：如果传入不存在或已被删除的 `tripId`，可能产生查不到归属、无法通过正常界面访问和清理的孤儿数据。
 - **建议方案**：创建前先 `TripRepo.findById(tripId)`，不存在则返回 404，与"删除操作/找不到资源"的错误处理方式保持一致。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：新增 `server/src/lib/tripGuard.ts` 中的 `requireTripExists` 中间件，已接入 activities/expenses/notes 三个子资源路由的所有写操作，Trip 不存在时统一返回 404。
 
 ### P1-5. AI 接口无速率限制，可能被滥用导致 API Key 费用超支
 - **位置**：`server/src/routes/ai.ts`（`POST /recommend`、`POST /regenerate-day` 均无限流）
 - **问题**：任何人都可以无限调用 AI 生成接口，PRD 已明确识别此风险（§10 风险与依赖）但代码未实现任何限流。
 - **影响**：一旦配置了真实的大模型 API Key（ROADMAP F-AI-02 待办事项），存在被脚本刷调用导致费用失控的风险。
 - **建议方案**：加简单的基于 IP 或 session 的速率限制中间件（如每分钟/每小时调用次数上限），可选用 `express-rate-limit` 一类的轻量依赖。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：新增 `server/src/lib/rateLimit.ts` 实现基于内存的 IP 级限流中间件（无需额外依赖），应用于 `/api/ai/recommend` 和 `/api/ai/regenerate-day`，每 IP 每分钟最多 10 次，超过返回 429；生产环境同时开启 `trust proxy` 以正确识别反向代理后的真实客户端 IP。
 
 ### P1-6. AI 调用失败降级为 Mock 数据时，前端未向用户明确提示
 - **位置**：`server/src/services/aiService.ts` 第 122-125 行（返回 `source: 'mock'`）；前端消费该字段的位置需要核实是否有对应 UI 提示
 - **问题**：PRD 明确要求"AI 调用失败时优雅降级到规则推荐，并提示用户"，当前后端虽然做了降级，但没有确认前端是否真正向用户展示了"这是本地模板方案而非 AI 定制结果"的提示。
 - **影响**：用户可能误以为通用模板行程是针对自己偏好和目的地定制的 AI 结果，产生错误预期，进而影响对"AI 推荐"这个核心卖点的信任。
 - **建议方案**：核对 `AiPlanner.tsx` 是否使用了 `result.source` 字段；如未使用，增加一个醒目但不打扰的提示条（如"当前使用离线推荐模板，配置 AI Key 后可获得更懂你的专属方案"）。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：`AiPlanner.tsx` 在 `result.source !== 'ai'` 时展示醒目的黄色提示条，明确告知用户当前为离线推荐模板（原有的小 chip 标签也保留）。
 
 ### P1-7. 列表接口无分页/排序参数，全量返回
 - **位置**：`server/src/db/repositories.ts`（`TripRepo.all()`、`ActivityRepo.byTrip()` 等均硬编码排序、无分页）
 - **问题**：旅行、花销、记录数量增长后，接口响应体积和前端渲染压力会明显上升，尤其结合图片 base64 问题（P0-6）会进一步放大。
 - **影响**：数据量大的老用户会明显感觉到加载变慢、页面卡顿。
 - **建议方案**：本期不要求做完整分页 UI，但建议至少给核心列表接口预留 `limit`/`offset` 或游标参数，避免未来重构接口签名产生兼容性问题。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：`TripRepo.all()` 新增 `TripListQuery`（keyword/sortBy/sortOrder/limit/offset），`GET /api/trips` 路由已透传对应 query 参数，接口层具备分页与排序能力。
 
 ### P1-8. 列表页缺少搜索、排序、筛选能力
 - **位置**：`client/src/pages/Dashboard.tsx`（旅行列表，仅支持按类型筛选）、`client/src/pages/TripDetail.tsx` 的 BudgetTab（花销列表）、NotesTab（记录列表）
 - **问题**：旅行列表没有搜索框和按日期/预算排序；花销明细不能按金额/日期/分类排序筛选；旅行记录不能按日期/心情搜索筛选。
 - **影响**：随着用户使用时间变长、数据积累增多（如一次多日游产生几十条花销），找到目标数据的成本显著上升。
 - **建议方案**：优先给 Dashboard 加搜索框（按标题/目的地模糊匹配）和排序选项（按日期/创建时间）；BudgetTab 加按分类筛选和金额/日期排序。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：`Dashboard.tsx` 增加标题/目的地搜索框与按日期/预算排序（本地筛选排序，搜索无结果时有区分提示）；`BudgetTab` 增加按分类筛选与按日期/金额排序；`NotesTab` 增加内容搜索、按心情筛选与按日期排序。
 
 ### P1-9. CORS 完全开放，无域名限制
 - **位置**：`server/src/index.ts` 第 18 行 `app.use(cors())`
 - **问题**：未配置 `origin` 白名单，任何网页都可以通过前端 JS 跨域调用后端 API。
 - **影响**：结合 P0-1（无认证）问题会被放大，即便未来加了认证，开放的 CORS 也扩大了攻击面。
 - **建议方案**：生产环境下将 `origin` 限制为实际部署的前端域名。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复：`server/src/index.ts` 支持 `CORS_ORIGIN` 环境变量配置白名单，生产环境下未显式配置时默认不开放跨域（同源访问不受影响）。
 
 ---
 

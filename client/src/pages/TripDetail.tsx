@@ -583,6 +583,15 @@ function SortableActivityItem({
   );
 }
 
+type ExpenseSortKey = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc';
+
+const EXPENSE_SORT_OPTIONS: { key: ExpenseSortKey; label: string }[] = [
+  { key: 'date-desc', label: '按日期，最新优先' },
+  { key: 'date-asc', label: '按日期，最早优先' },
+  { key: 'amount-desc', label: '按金额，从高到低' },
+  { key: 'amount-asc', label: '按金额，从低到高' },
+];
+
 /* ============ 预算花销 Tab ============ */
 function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
   const { toast } = useStore();
@@ -591,10 +600,27 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const [removing, setRemoving] = useState<Expense | null>(null);
   const [removeLoading, setRemoveLoading] = useState(false);
+  // 分类筛选 + 排序（P1-8）
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [sortKey, setSortKey] = useState<ExpenseSortKey>('date-desc');
 
   const total = trip.expenses.reduce((s, e) => s + e.amount, 0);
   const pct = trip.budget > 0 ? Math.min(100, (total / trip.budget) * 100) : 0;
   const over = trip.budget > 0 && total > trip.budget;
+
+  const visibleExpenses = (() => {
+    let list =
+      categoryFilter === 'all'
+        ? trip.expenses
+        : trip.expenses.filter((e) => e.category === categoryFilter);
+    const [field, order] = sortKey.split('-') as ['date' | 'amount', 'asc' | 'desc'];
+    list = [...list].sort((a, b) => {
+      const av = field === 'amount' ? a.amount : new Date(a.date).getTime();
+      const bv = field === 'amount' ? b.amount : new Date(b.date).getTime();
+      return order === 'asc' ? av - bv : bv - av;
+    });
+    return list;
+  })();
 
   // 分类汇总
   const byCat = trip.expenses.reduce<Record<string, number>>((acc, e) => {
@@ -675,18 +701,51 @@ function BudgetTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
         )}
       </div>
 
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-3">
         <h3 className="font-bold text-gray-700">花销明细</h3>
         <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
           ＋ 记一笔
         </button>
       </div>
 
+      {/* 分类筛选 + 排序（P1-8），仅在有花销记录时展示 */}
+      {trip.expenses.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            className="input w-auto text-sm"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            aria-label="按分类筛选"
+          >
+            <option value="all">全部分类</option>
+            {Object.entries(EXPENSE_CATEGORY).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v.emoji} {v.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="input w-auto text-sm"
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as ExpenseSortKey)}
+            aria-label="排序方式"
+          >
+            {EXPENSE_SORT_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {trip.expenses.length === 0 ? (
         <div className="card p-10 text-center text-gray-300">还没有花销记录～</div>
+      ) : visibleExpenses.length === 0 ? (
+        <div className="card p-10 text-center text-gray-300">该分类下没有花销记录</div>
       ) : (
         <div className="card divide-y divide-gray-100">
-          {trip.expenses.map((e) => {
+          {visibleExpenses.map((e) => {
             const c = EXPENSE_CATEGORY[e.category];
             return (
               <div key={e.id} className="flex items-center gap-3 p-4 group">
@@ -745,6 +804,31 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
   const [removing, setRemoving] = useState<Note | null>(null);
   const [removeLoading, setRemoveLoading] = useState(false);
   const [lightbox, setLightbox] = useState<{ images: string[]; index: number } | null>(null);
+  // 搜索 + 心情筛选 + 日期排序（P1-8）
+  const [keyword, setKeyword] = useState('');
+  const [moodFilter, setMoodFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  const availableMoods = Array.from(new Set(trip.notes.map((n) => n.mood)));
+
+  const visibleNotes = (() => {
+    let list = trip.notes;
+    const kw = keyword.trim().toLowerCase();
+    if (kw) {
+      list = list.filter(
+        (n) =>
+          n.content.toLowerCase().includes(kw) || (n.title ?? '').toLowerCase().includes(kw)
+      );
+    }
+    if (moodFilter !== 'all') {
+      list = list.filter((n) => n.mood === moodFilter);
+    }
+    return [...list].sort((a, b) => {
+      const av = new Date(a.date).getTime();
+      const bv = new Date(b.date).getTime();
+      return sortOrder === 'asc' ? av - bv : bv - av;
+    });
+  })();
 
   const handleSubmit = async (data: Partial<Note>) => {
     setSubmitting(true);
@@ -807,7 +891,49 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
 
   return (
     <div className="space-y-5 animate-fade-up">
-      <div className="flex justify-end">
+      <div className="flex justify-between items-center flex-wrap gap-3">
+        {/* 搜索 + 心情筛选 + 日期排序（P1-8），仅在有记录时展示 */}
+        {trip.notes.length > 0 ? (
+          <div className="flex items-center gap-2 flex-wrap flex-1">
+            <div className="relative min-w-[160px]">
+              <input
+                type="search"
+                className="input pl-9 text-sm"
+                placeholder="搜索记录内容…"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                aria-label="搜索旅行记录"
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+            </div>
+            {availableMoods.length > 1 && (
+              <select
+                className="input w-auto text-sm"
+                value={moodFilter}
+                onChange={(e) => setMoodFilter(e.target.value)}
+                aria-label="按心情筛选"
+              >
+                <option value="all">全部心情</option>
+                {availableMoods.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            )}
+            <select
+              className="input w-auto text-sm"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as 'desc' | 'asc')}
+              aria-label="排序方式"
+            >
+              <option value="desc">最新优先</option>
+              <option value="asc">最早优先</option>
+            </select>
+          </div>
+        ) : (
+          <div />
+        )}
         <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
           ＋ 写记录
         </button>
@@ -818,9 +944,14 @@ function NotesTab({ trip, reload }: { trip: TripDetail; reload: () => void }) {
           <div className="text-5xl animate-float">📖</div>
           <p className="text-gray-400 mt-3">还没有旅行记录，写下第一篇手账吧～</p>
         </div>
+      ) : visibleNotes.length === 0 ? (
+        <div className="card p-12 text-center">
+          <div className="text-5xl">🔍</div>
+          <p className="text-gray-400 mt-3">没有找到匹配的记录</p>
+        </div>
       ) : (
         <div className="columns-1 sm:columns-2 gap-5 space-y-5">
-          {trip.notes.map((n) => (
+          {visibleNotes.map((n) => (
             <div key={n.id} className="card p-4 sm:p-5 break-inside-avoid group">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">

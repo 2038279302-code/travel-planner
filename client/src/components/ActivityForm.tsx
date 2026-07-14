@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { Activity, ActivityCategory } from '../types';
 import { ACTIVITY_CATEGORY } from '../utils/constants';
 import { fmtDate, localDateToISO } from '../utils/format';
+import { validateNumberInput, MAX_COST } from '../utils/validation';
 import FieldError from './FieldError';
 import { useStore } from '../store/useStore';
 
@@ -49,7 +50,9 @@ export default function ActivityForm({
     const next: FormErrors = {};
     if (!title.trim()) next.title = '请填写安排内容';
     if (startTime && endTime && endTime <= startTime) next.time = '结束时间需晚于开始时间';
-    if (cost && Number(cost) < 0) next.cost = '花费不能为负数';
+    // 严格校验花费输入：非法字符、负数、超出上限都直接拦截（P1-2）
+    const costError = validateNumberInput(cost, { label: '花费', max: MAX_COST });
+    if (costError) next.cost = costError;
     return next;
   };
 
@@ -72,7 +75,7 @@ export default function ActivityForm({
         category,
         location: location.trim() || null,
         note: note.trim() || null,
-        cost: Number(cost) || 0,
+        cost: cost.trim() ? Number(cost) : 0,
       });
     } finally {
       setSubmitting(false);

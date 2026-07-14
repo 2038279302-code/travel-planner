@@ -7,6 +7,7 @@ import {
   COVER_EMOJIS,
 } from '../utils/constants';
 import { fmtDate, localDateToISO } from '../utils/format';
+import { validateNumberInput, MAX_BUDGET } from '../utils/validation';
 import FieldError from './FieldError';
 import { useStore } from '../store/useStore';
 
@@ -51,7 +52,9 @@ export default function TripForm({ initial, onSubmit, onCancel }: Props) {
     if (!startDate) next.startDate = '请选择开始日期';
     if (!endDate) next.endDate = '请选择结束日期';
     if (startDate && endDate && endDate < startDate) next.endDate = '结束日期不能早于开始日期';
-    if (budget && Number(budget) < 0) next.budget = '预算不能为负数';
+    // 严格校验预算输入：非法字符、负数、超出上限都直接拦截，避免被静默转成 0（P1-2）
+    const budgetError = validateNumberInput(budget, { label: '预算', max: MAX_BUDGET });
+    if (budgetError) next.budget = budgetError;
     return next;
   };
 
@@ -73,7 +76,7 @@ export default function TripForm({ initial, onSubmit, onCancel }: Props) {
         description: description.trim() || null,
         startDate: localDateToISO(startDate), // 本地时间转 ISO，避免时区偏移
         endDate: localDateToISO(endDate),
-        budget: Number(budget) || 0,
+        budget: budget.trim() ? Number(budget) : 0,
         status,
         coverColor,
         coverEmoji,

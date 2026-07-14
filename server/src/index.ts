@@ -16,6 +16,12 @@ const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const isProd = process.env.NODE_ENV === 'production';
 
+// 生产环境通常部署在 Railway 等反向代理之后，需要信任第一层代理设置的
+// X-Forwarded-For 头，否则 req.ip 会拿到代理自身地址，导致限流中间件（P1-5）误判为同一 IP。
+if (isProd) {
+  app.set('trust proxy', 1);
+}
+
 // 生产环境下若未限制 CORS 白名单，会在无认证的情况下进一步放大攻击面（P1-9）。
 // 未显式配置 CORS_ORIGIN 时，生产环境默认不开放跨域（同源访问不受影响）。
 const corsOrigin = process.env.CORS_ORIGIN;

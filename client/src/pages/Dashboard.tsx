@@ -16,20 +16,45 @@ const FILTERS: { key: 'all' | TripType; label: string; emoji: string }[] = [
   { key: 'weekend', label: '周末', emoji: '🎒' },
 ];
 
+type SortKey = 'startDate-desc' | 'startDate-asc' | 'budget-desc' | 'budget-asc';
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'startDate-desc', label: '按日期，最新优先' },
+  { key: 'startDate-asc', label: '按日期，最早优先' },
+  { key: 'budget-desc', label: '按预算，从高到低' },
+  { key: 'budget-asc', label: '按预算，从低到高' },
+];
+
 export default function Dashboard() {
   const { trips, stats, loading, refresh, toast } = useStore();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'all' | TripType>('all');
+  // 标题/目的地模糊搜索（P1-8）
+  const [keyword, setKeyword] = useState('');
+  // 排序方式（P1-8）
+  const [sortKey, setSortKey] = useState<SortKey>('startDate-desc');
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     refresh();
   }, []);
 
-  const filtered = useMemo(
-    () => (filter === 'all' ? trips : trips.filter((t) => t.type === filter)),
-    [trips, filter]
-  );
+  const filtered = useMemo(() => {
+    let list = filter === 'all' ? trips : trips.filter((t) => t.type === filter);
+    const kw = keyword.trim().toLowerCase();
+    if (kw) {
+      list = list.filter(
+        (t) => t.title.toLowerCase().includes(kw) || t.destination.toLowerCase().includes(kw)
+      );
+    }
+    const [field, order] = sortKey.split('-') as ['startDate' | 'budget', 'asc' | 'desc'];
+    const sorted = [...list].sort((a, b) => {
+      const av = field === 'budget' ? a.budget : new Date(a.startDate).getTime();
+      const bv = field === 'budget' ? b.budget : new Date(b.startDate).getTime();
+      return order === 'asc' ? av - bv : bv - av;
+    });
+    return sorted;
+  }, [trips, filter, keyword, sortKey]);
 
   const handleCreate = async (data: Partial<Trip>) => {
     try {
@@ -60,6 +85,33 @@ export default function Dashboard() {
         </div>
       </section>
 
+      {/* 搜索 + 排序（P1-8） */}
+      <section className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <input
+            type="search"
+            className="input pl-9"
+            placeholder="搜索旅行标题或目的地…"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            aria-label="搜索旅行"
+          />
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+        </div>
+        <select
+          className="input w-auto"
+          value={sortKey}
+          onChange={(e) => setSortKey(e.target.value as SortKey)}
+          aria-label="排序方式"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </section>
+
       {/* 筛选 + 新建 */}
       <section className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex gap-2 flex-wrap" role="radiogroup" aria-label="行程类型筛选">
@@ -88,6 +140,22 @@ export default function Dashboard() {
       {/* 卡片墙 */}
       {loading && trips.length === 0 ? (
         <div className="text-center text-gray-400 py-20">加载中…</div>
+      ) : filtered.length === 0 && trips.length > 0 ? (
+        // 有旅行数据，但搜索/筛选后无匹配结果，与"完全没有旅行"区分提示（P1-8）
+        <div className="card py-16 flex flex-col items-center text-center animate-fade-up">
+          <div className="text-5xl">🔍</div>
+          <h3 className="text-lg font-bold text-gray-700 mt-4">没有找到匹配的旅行</h3>
+          <p className="text-gray-400 mt-1">试试换个关键词，或清空筛选条件</p>
+          <button
+            className="btn-ghost mt-5"
+            onClick={() => {
+              setKeyword('');
+              setFilter('all');
+            }}
+          >
+            清空搜索与筛选
+          </button>
+        </div>
       ) : filtered.length === 0 ? (
         <EmptyState onCreate={() => setShowCreate(true)} />
       ) : (

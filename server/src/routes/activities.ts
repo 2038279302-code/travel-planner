@@ -6,6 +6,7 @@ import {
   activityUpdateSchema,
   activityReorderSchema,
 } from '../lib/validate';
+import { requireTripExists, isDateWithinTrip } from '../lib/tripGuard';
 
 const router = Router({ mergeParams: true });
 
@@ -19,11 +20,18 @@ router.get('/', (req, res, next) => {
   }
 });
 
+// 以下写操作统一前置校验所属旅行存在（P1-4）
+router.use(requireTripExists);
+
 /** 新增行程项 */
 router.post('/', validateBody(activitySchema), (req, res, next) => {
   try {
     const { tripId } = req.params as { tripId: string };
+    const trip = req.trip!;
     const d = req.body;
+    if (!isDateWithinTrip(d.dayDate, trip)) {
+      return res.status(400).json({ error: '行程日期需在旅行时间范围内' });
+    }
     const activity = ActivityRepo.create(tripId, {
       dayDate: new Date(d.dayDate).toISOString(),
       startTime: d.startTime ?? null,
@@ -60,8 +68,14 @@ router.patch('/reorder', validateBody(activityReorderSchema), (req, res, next) =
 /** 更新行程项 */
 router.put('/:id', validateBody(activityUpdateSchema), (req, res, next) => {
   try {
+    const trip = req.trip!;
     const d = { ...req.body };
-    if (d.dayDate) d.dayDate = new Date(d.dayDate).toISOString();
+    if (d.dayDate) {
+      if (!isDateWithinTrip(d.dayDate, trip)) {
+        return res.status(400).json({ error: '行程日期需在旅行时间范围内' });
+      }
+      d.dayDate = new Date(d.dayDate).toISOString();
+    }
     const activity = ActivityRepo.update(req.params.id, d);
     if (!activity) return res.status(404).json({ error: '行程项不存在' });
     res.json(activity);

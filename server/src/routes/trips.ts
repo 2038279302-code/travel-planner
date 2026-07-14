@@ -4,10 +4,19 @@ import { validateBody, tripSchema, tripUpdateSchema, tripWithActivitiesSchema } 
 
 const router = Router();
 
-/** 获取所有旅行 */
-router.get('/', (_req, res, next) => {
+/** 获取所有旅行，支持关键词搜索、排序、分页（P1-7/P1-8） */
+router.get('/', (req, res, next) => {
   try {
-    res.json(TripRepo.all());
+    const { keyword, sortBy, sortOrder, limit, offset } = req.query as Record<string, string>;
+    res.json(
+      TripRepo.all({
+        keyword,
+        sortBy: sortBy as 'startDate' | 'createdAt' | 'budget' | undefined,
+        sortOrder: sortOrder as 'asc' | 'desc' | undefined,
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+      })
+    );
   } catch (err) {
     next(err);
   }
@@ -118,7 +127,17 @@ router.post('/', validateBody(tripSchema), (req, res, next) => {
 /** 更新旅行 */
 router.put('/:id', validateBody(tripUpdateSchema), (req, res, next) => {
   try {
+    const existing = TripRepo.find(req.params.id);
+    if (!existing) return res.status(404).json({ error: '旅行不存在' });
+
     const d = { ...req.body };
+    // 只传了 startDate 或 endDate 其中一个时，结合数据库中已有值做交叉校验（P1-1）
+    const nextStart = d.startDate ? new Date(d.startDate) : new Date(existing.startDate);
+    const nextEnd = d.endDate ? new Date(d.endDate) : new Date(existing.endDate);
+    if (nextStart > nextEnd) {
+      return res.status(400).json({ error: '开始日期不能晚于结束日期' });
+    }
+
     if (d.startDate) d.startDate = new Date(d.startDate).toISOString();
     if (d.endDate) d.endDate = new Date(d.endDate).toISOString();
     const trip = TripRepo.update(req.params.id, d);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { NoteRepo } from '../db/repositories';
 import { validateBody, noteSchema, noteUpdateSchema } from '../lib/validate';
+import { requireTripExists } from '../lib/tripGuard';
 
 const router = Router({ mergeParams: true });
 
@@ -13,6 +14,9 @@ router.get('/', (req, res, next) => {
     next(err);
   }
 });
+
+// 以下写操作统一前置校验所属旅行存在（P1-4）
+router.use(requireTripExists);
 
 /** 新增记录 */
 router.post('/', validateBody(noteSchema), (req, res, next) => {

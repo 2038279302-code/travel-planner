@@ -7,6 +7,7 @@ import { TRIP_TYPE, ACTIVITY_CATEGORY, COVER_EMOJIS, COVER_COLORS } from '../uti
 import { fmtMoney } from '../utils/format';
 import FieldError from '../components/FieldError';
 import type { ApiError } from '../api';
+import { validateNumberInput, MAX_BUDGET } from '../utils/validation';
 
 /** 从统一错误对象中提取人类可读的提示文案，兜底为通用提示 */
 function errMsg(err: unknown, fallback: string): string {
@@ -37,7 +38,9 @@ export default function AiPlanner() {
   // 每天自定义调整指令的输入框内容
   const [customInstruction, setCustomInstruction] = useState<Record<number, string>>({});
   const [destinationError, setDestinationError] = useState<string | undefined>();
+  const [budgetError, setBudgetError] = useState<string | undefined>();
   const destinationRef = useRef<HTMLInputElement>(null);
+  const budgetRef = useRef<HTMLInputElement>(null);
 
   const generate = async () => {
     if (!destination.trim()) {
@@ -46,7 +49,16 @@ export default function AiPlanner() {
       destinationRef.current?.focus();
       return;
     }
+    // 严格校验预算输入：非法字符/负数/超出上限直接拦截，避免带着 NaN 提交给后端（P1-2）
+    const bErr = validateNumberInput(budget, { label: '预算', max: MAX_BUDGET });
+    if (bErr) {
+      setBudgetError(bErr);
+      toast(bErr, 'error');
+      budgetRef.current?.focus();
+      return;
+    }
     setDestinationError(undefined);
+    setBudgetError(undefined);
     setLoading(true);
     setResult(null);
     try {
@@ -55,7 +67,7 @@ export default function AiPlanner() {
         days,
         type,
         preferences: preferences.trim() || undefined,
-        budget: budget ? Number(budget) : undefined,
+        budget: budget.trim() ? Number(budget) : undefined,
       });
       setResult(res);
     } catch (err) {
@@ -113,7 +125,7 @@ export default function AiPlanner() {
           description: result.summary,
           startDate: start.toISOString(),
           endDate: end.toISOString(),
-          budget: budget ? Number(budget) : result.estimatedTotalCost,
+          budget: budget.trim() && !Number.isNaN(Number(budget)) ? Number(budget) : result.estimatedTotalCost,
           status: 'planning',
           coverColor: COVER_COLORS[Math.floor(Math.random() * COVER_COLORS.length)],
           coverEmoji: COVER_EMOJIS[Math.floor(Math.random() * COVER_EMOJIS.length)],
@@ -237,13 +249,20 @@ export default function AiPlanner() {
             <label htmlFor="ai-budget" className="text-sm text-gray-500 mb-1 block">预算参考（¥，选填）</label>
             <input
               id="ai-budget"
+              ref={budgetRef}
               type="number"
               min={0}
-              className="input"
+              className={`input ${budgetError ? 'input-error' : ''}`}
               value={budget}
-              onChange={(e) => setBudget(e.target.value)}
+              onChange={(e) => {
+                setBudget(e.target.value);
+                if (budgetError) setBudgetError(undefined);
+              }}
               placeholder="例如：5000"
+              aria-invalid={!!budgetError}
+              aria-describedby={budgetError ? 'ai-budget-error' : undefined}
             />
+            <FieldError id="ai-budget-error" message={budgetError} />
           </div>
         </div>
 
@@ -274,6 +293,15 @@ export default function AiPlanner() {
       {/* 结果 */}
       {result && !loading && (
         <div className="space-y-5 animate-fade-up">
+          {/* AI 降级提示（P1-6）：source 非 ai 时说明当前是离线模板方案，避免用户误以为是专属定制结果 */}
+          {result.source !== 'ai' && (
+            <div className="card p-3 sm:p-4 bg-yellow-50 border border-yellow-100 flex items-start gap-2 text-sm text-yellow-700">
+              <span className="text-base shrink-0">💡</span>
+              <span>
+                当前展示的是离线推荐模板，并非针对你的偏好专属定制。配置 AI Key 后可获得更懂你的个性化方案。
+              </span>
+            </div>
+          )}
           <div className="card p-6">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <h2 className="text-xl font-bold text-gray-800 break-words min-w-0">

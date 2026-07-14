@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { Expense, ExpenseCategory } from '../types';
 import { EXPENSE_CATEGORY } from '../utils/constants';
 import { fmtDate, localDateToISO } from '../utils/format';
+import { validateNumberInput, MAX_COST } from '../utils/validation';
 import FieldError from './FieldError';
 import { useStore } from '../store/useStore';
 
@@ -33,8 +34,14 @@ export default function ExpenseForm({ initial, onSubmit, onCancel }: Props) {
   const validate = (): FormErrors => {
     const next: FormErrors = {};
     if (!title.trim()) next.title = '请填写花销项目';
-    if (!amount) next.amount = '请填写金额';
-    else if (Number(amount) <= 0) next.amount = '金额需大于 0';
+    // 严格校验金额输入：必填、非法字符、不允许为 0、超出上限都直接拦截（P1-2）
+    const amountError = validateNumberInput(amount, {
+      label: '金额',
+      allowEmpty: false,
+      allowZero: false,
+      max: MAX_COST,
+    });
+    if (amountError) next.amount = amountError;
     return next;
   };
 
@@ -52,7 +59,7 @@ export default function ExpenseForm({ initial, onSubmit, onCancel }: Props) {
       await onSubmit({
         title: title.trim(),
         category,
-        amount: Number(amount) || 0,
+        amount: Number(amount),
         date: localDateToISO(date), // 本地时间转 ISO，避免时区偏移少一天
       });
     } finally {

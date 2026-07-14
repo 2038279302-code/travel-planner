@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ExpenseRepo } from '../db/repositories';
 import { validateBody, expenseSchema, expenseUpdateSchema } from '../lib/validate';
+import { requireTripExists } from '../lib/tripGuard';
 
 const router = Router({ mergeParams: true });
 
@@ -13,6 +14,10 @@ router.get('/', (req, res, next) => {
     next(err);
   }
 });
+
+// 以下写操作统一前置校验所属旅行存在（P1-4）；
+// 花销日期不强制限制在旅行时间范围内（兼顾提前采购/事后报销等场景，P1-1 诺断中的产品判断）。
+router.use(requireTripExists);
 
 /** 新增花销 */
 router.post('/', validateBody(expenseSchema), (req, res, next) => {

@@ -59,12 +59,70 @@ export interface Note {
   updatedAt: string;
 }
 
+/**
+ * 根据当前时间与旅行起止日期派生展示状态（P1-3）。
+ * 规则：
+ * - 若用户已手动标记为 completed（提前结束旅行），继续保持 completed，不被时间回改；
+ * - 若已过了结束日期，无论原状态如何都自动展示为 completed（旅行确实已结束）；
+ * - 若处于起止日期之间，展示为 ongoing；
+ * - 若还未开始，展示为 planning。
+ * 注意：仅作为查询时的派生字段，不回写数据库，保留用户手动设置的原始值。
+ */
+function deriveStatus(trip: Pick<Trip, 'status' | 'startDate' | 'endDate'>): Trip['status'] {
+  if (trip.status === 'completed') return 'completed';
+  const now = Date.now();
+  const start = new Date(trip.startDate).getTime();
+  const end = new Date(trip.endDate).getTime();
+  if (now > end) return 'completed';
+  if (now >= start) return 'ongoing';
+  return 'planning';
+}
+
+export interface TripListQuery {
+  /** 标题/目的地模糊搜索关键词（P1-8） */
+  keyword?: string;
+  /** 排序字段：默认按开始日期倒序（P1-8） */
+  sortBy?: 'startDate' | 'createdAt' | 'budget';
+  sortOrder?: 'asc' | 'desc';
+  /** 分页参数：预留接口能力，本期不要求前端完整分页 UI（P1-7） */
+  limit?: number;
+  offset?: number;
+}
+
+const TRIP_SORT_COLUMNS: Record<NonNullable<TripListQuery['sortBy']>, string> = {
+  startDate: 'startDate',
+  createdAt: 'createdAt',
+  budget: 'budget',
+};
+
 // ===================== Trip =====================
 export const TripRepo = {
-  all(): (Trip & { _count: { activities: number; expenses: number; notes: number } })[] {
-    const trips = queryAll<Trip>('SELECT * FROM Trip ORDER BY startDate DESC');
+  all(query: TripListQuery = {}): (Trip & { _count: { activities: number; expenses: number; notes: number } })[] {
+    const { keyword, sortBy = 'startDate', sortOrder = 'desc', limit, offset } = query;
+    const column = TRIP_SORT_COLUMNS[sortBy] ?? 'startDate';
+    const dir = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    const params: unknown[] = [];
+    let sql = 'SELECT * FROM Trip';
+    if (keyword && keyword.trim()) {
+      sql += ' WHERE title LIKE ? OR destination LIKE ?';
+      const like = `%${keyword.trim()}%`;
+      params.push(like, like);
+    }
+    sql += ` ORDER BY ${column} ${dir}`;
+    if (typeof limit === 'number' && limit > 0) {
+      sql += ' LIMIT ?';
+      params.push(limit);
+      if (typeof offset === 'number' && offset > 0) {
+        sql += ' OFFSET ?';
+        params.push(offset);
+      }
+    }
+
+    const trips = queryAll<Trip>(sql, params);
     return trips.map((t) => ({
       ...t,
+      status: deriveStatus(t),
       _count: {
         activities: countBy('Activity', t.id),
         expenses: countBy('Expense', t.id),
@@ -82,6 +140,7 @@ export const TripRepo = {
     if (!trip) return null;
     return {
       ...trip,
+      status: deriveStatus(trip),
       activities: ActivityRepo.byTrip(tripId),
       expenses: ExpenseRepo.byTrip(tripId),
       notes: NoteRepo.byTrip(tripId),
