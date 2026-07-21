@@ -83,10 +83,18 @@ export const tripWithActivitiesSchema = z.object({
 // 单项花费上限：100 万，与预算上限量级匹配（P1-2）
 const MAX_COST = 1_000_000;
 
-export const activitySchema = z.object({
+// 时间格式校验：严格的 24 小时制 HH:mm，拒绝如 "25:00"、"9:5" 等非法值（P2-6）
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const timeField = z
+  .string()
+  .regex(TIME_RE, '时间格式不合法，应为 HH:mm（如 09:30）')
+  .optional()
+  .nullable();
+
+const activityBaseSchema = z.object({
   dayDate: z.string().min(1, '日期不能为空'),
-  startTime: z.string().optional().nullable(),
-  endTime: z.string().optional().nullable(),
+  startTime: timeField,
+  endTime: timeField,
   title: z.string().min(1, '标题不能为空').max(200),
   category: z
     .enum(['sightseeing', 'food', 'transport', 'hotel', 'meeting', 'other'])
@@ -98,7 +106,22 @@ export const activitySchema = z.object({
   order: z.number().int().default(0),
 });
 
-export const activityUpdateSchema = activitySchema.partial();
+/** 有值时校验 endTime 必须晚于 startTime，与前端 ActivityForm 校验逻辑保持一致（P2-6，服务端兜底） */
+function refineTimeRange<T extends { startTime?: string | null; endTime?: string | null }>(
+  schema: z.ZodType<T>
+) {
+  return schema.refine(
+    (d) => {
+      if (!d.startTime || !d.endTime) return true;
+      return d.endTime > d.startTime;
+    },
+    { message: '结束时间必须晚于开始时间', path: ['endTime'] }
+  );
+}
+
+export const activitySchema = refineTimeRange(activityBaseSchema);
+
+export const activityUpdateSchema = refineTimeRange(activityBaseSchema.partial());
 
 /** 拖拽排序：批量更新行程项的日期与顺序 */
 export const activityReorderSchema = z.object({

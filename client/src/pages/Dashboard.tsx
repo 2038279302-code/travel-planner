@@ -8,12 +8,14 @@ import { TRIP_TYPE, TRIP_STATUS } from '../utils/constants';
 import { fmtMonthDay, tripDays, fmtMoney } from '../utils/format';
 import Modal from '../components/Modal';
 import TripForm from '../components/TripForm';
+import { CardGridSkeleton } from '../components/Skeleton';
 
+// 筛选按钮文案统一引用 constants.ts 中的 TRIP_TYPE 定义，避免硬编码导致文案分裂（P2-8）
 const FILTERS: { key: 'all' | TripType; label: string; emoji: string }[] = [
   { key: 'all', label: '全部', emoji: '🌈' },
-  { key: 'travel', label: '旅行', emoji: '🌴' },
-  { key: 'business', label: '差旅', emoji: '💼' },
-  { key: 'weekend', label: '周末', emoji: '🎒' },
+  { key: 'travel', label: TRIP_TYPE.travel.label, emoji: TRIP_TYPE.travel.emoji },
+  { key: 'business', label: TRIP_TYPE.business.label, emoji: TRIP_TYPE.business.emoji },
+  { key: 'weekend', label: TRIP_TYPE.weekend.label, emoji: TRIP_TYPE.weekend.emoji },
 ];
 
 type SortKey = 'startDate-desc' | 'startDate-asc' | 'budget-desc' | 'budget-asc';
@@ -139,7 +141,7 @@ export default function Dashboard() {
 
       {/* 卡片墙 */}
       {loading && trips.length === 0 ? (
-        <div className="text-center text-gray-400 py-20">加载中…</div>
+        <CardGridSkeleton />
       ) : filtered.length === 0 && trips.length > 0 ? (
         // 有旅行数据，但搜索/筛选后无匹配结果，与"完全没有旅行"区分提示（P1-8）
         <div className="card py-16 flex flex-col items-center text-center animate-fade-up">

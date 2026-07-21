@@ -167,49 +167,49 @@
 - **位置**：`server/src/db/index.ts`（`CREATE TABLE IF NOT EXISTS`，无版本追踪表）
 - **问题**：新增字段（如 ROADMAP 计划给 Activity 加 `lat/lng/address/poiId`）目前只能手动改表或清库重建。
 - **建议方案**：引入一个简单的 `schema_migrations` 版本表 + 迁移脚本机制，即使是最简化的版本号 diff 执行方式也比裸 `CREATE TABLE IF NOT EXISTS` 更可控。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复——新增 `schema_migrations` 版本表，`MIGRATIONS` 数组按版本号顺序执行未应用的迁移，每条迁移在事务中执行并记录版本号，旧数据库启动时会自动补齐缺失的迁移。
 
 ### P2-2. Activity、Expense 缺少 updatedAt 字段
 - **位置**：`server/src/db/index.ts` Activity 表定义（第 29-44 行）、Expense 表定义（第 46-55 行）
 - **问题**：拖拽排序、打卡、改金额等操作无法追踪最后修改时间，为未来的多端同步/冲突检测埋下障碍。
 - **建议方案**：补充 `updatedAt` 字段，写操作时同步更新。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复——通过 v2 迁移给 Activity/Expense 补充 `updatedAt`（旧数据用 `createdAt` 回填），并在 create/update/reorder 等写操作中同步维护。
 
 ### P2-3. 统计接口存在 N+1 查询
 - **位置**：`server/src/routes/trips.ts` 第 17-50 行 `GET /stats/overview`
 - **问题**：先查所有 Trip，再逐个查询每个 Trip 的花销总和，属于典型 N+1 查询模式。
 - **建议方案**：改为一条 `SELECT tripId, SUM(amount) FROM Expense GROUP BY tripId` 聚合查询。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复——新增 `sumExpensesByTrip()` 一次性聚合查询，统计接口改为查表 Map 而非逐个 Trip 查询。
 
 ### P2-4. Toast 提示时长固定 2.8 秒，不区分错误/成功类型
 - **位置**：`client/src/store/useStore.ts` 第 53 行
 - **问题**：重要的错误提示和普通的成功提示用同样的展示时长，用户可能来不及看清错误详情就消失了。
 - **建议方案**：错误类 Toast 适当延长展示时间或要求手动关闭，成功类保持当前时长。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复——error 类型展示 5000ms，success/info 保持 2800ms 不变，另外保留点击手动关闭能力。
 
 ### P2-5. 加载态仅为纯文本"加载中…"，缺少骨架屏
 - **位置**：`client/src/pages/Dashboard.tsx` 第 87-88 行、`client/src/pages/Discover.tsx` 第 69-70 行、`client/src/pages/TripDetail.tsx` 第 73 行
 - **问题**：相比 AiPlanner 页面有 emoji 动画的加载态，这几处显得比较简陋，首屏加载体验参差不齐。
 - **建议方案**：统一封装一个轻量骨架屏组件或复用 AiPlanner 的加载态风格。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复——新增 `components/Skeleton.tsx`，提供 `PageLoading`（emoji 动画风格，复用于 TripDetail）与 `CardGridSkeleton`（卡片骨架屏，应用于 Dashboard/Discover）。
 
 ### P2-6. 时间字段（startTime/endTime）无格式与逻辑校验
 - **位置**：`server/src/lib/validate.ts` 第 39-40 行
 - **问题**：不校验时间字符串格式是否合法（如 "25:00" 也能通过），也不校验 `endTime > startTime`。
 - **建议方案**：加正则校验时间格式，并在有值时校验 `endTime > startTime`（与前端 `ActivityForm` 的校验逻辑保持一致，做服务端兜底）。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复——Zod 新增 HH:mm 正则校验与 `refineTimeRange` 交叉校验；路由层补充“只传其中一个时间字段”时结合数据库已有值的二次校验。
 
 ### P2-7. 无障碍细节：Tab 切换缺少 `role="tablist"` 语义，Toast 缺少 `role="status"`
 - **位置**：`client/src/pages/TripDetail.tsx` 第 152-165 行（Tab 切换按钮）；`client/src/components/Toast.tsx`
 - **问题**：影响屏幕阅读器用户的使用体验。
 - **建议方案**：Tab 容器加 `role="tablist"`，每个按钮加 `role="tab"` + `aria-selected`；Toast 容器加 `role="status"` 或 `aria-live="polite"`。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复——TripDetail Tab 容器/按钮/面板补齐 tablist/tab/tabpanel 语义，Toast 容器补齐 `role="status"` 与 `aria-live="polite"`。
 
 ### P2-8. 文案不一致：`weekend` 类型的展示文案在不同地方不统一
 - **位置**：`client/src/utils/constants.ts` 第 11 行（`TRIP_TYPE.weekend.label = '周末出行'`）与 `client/src/pages/Dashboard.tsx` 第 15 行硬编码的筛选按钮文案 `'周末'`
 - **问题**：同一概念在不同位置文案不一致，属于细节打磨问题，但容易在后续维护中进一步分裂。
 - **建议方案**：筛选按钮统一引用 `constants.ts` 中的定义，避免硬编码。
-- **状态**：⬜ 待修复
+- **状态**：✅ 已修复——Dashboard 的 `FILTERS` 改为直接引用 `TRIP_TYPE` 中的 label/emoji，不再硬编码。
 
 ### P2-9. 产品核心旅程存在断点："出行中"与"出行后"阶段体验空白
 - **位置**：产品层面，非单一代码位置；对照 `PRD.md` §3.3 出行三阶段与北极星指标
@@ -229,3 +229,5 @@
 | P2 | 9 | schema 迁移、updatedAt、N+1 查询、Toast 时长、加载态、时间校验、无障碍、文案一致性、产品旅程断点 |
 
 **建议修复顺序**：严格按 P0 → P1 → P2 执行，P0 内部按编号顺序（P0-1 到 P0-4 属于"数据安全与信任"主线，建议优先于 P0-5、P0-6）。每完成一条，更新本文档对应状态，便于追踪整体修复进度。
+
+**修复进度**：P0（6/6）、P1（9/9）、P2（8/9，P2-9 为产品规划性质，不作为本轮硬性修复项）均已完成并通过本地构建与接口冒烟测试验证。

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { TripRepo, ExpenseRepo } from '../db/repositories';
+import { TripRepo, sumExpensesByTrip } from '../db/repositories';
 import { validateBody, tripSchema, tripUpdateSchema, tripWithActivitiesSchema } from '../lib/validate';
 
 const router = Router();
@@ -36,12 +36,13 @@ router.get('/stats/overview', (_req, res, next) => {
       trips.map((t) => t.destination.split(/[·\s,，]/)[0]).filter(Boolean)
     );
 
+    // 用一条聚合查询取代逐个 Trip 查询花销的 N+1 模式（P2-3）
+    const expenseTotals = sumExpensesByTrip();
     let totalSpent = 0;
     let totalBudget = 0;
     for (const t of trips) {
       totalBudget += t.budget;
-      const expenses = ExpenseRepo.byTrip(t.id);
-      totalSpent += expenses.reduce((s, e) => s + e.amount, 0);
+      totalSpent += expenseTotals.get(t.id) ?? 0;
     }
 
     res.json({

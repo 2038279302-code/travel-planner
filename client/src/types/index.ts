@@ -33,29 +33,31 @@ export interface Trip {
 }
 
 export interface Activity {
-  id: string;
-  tripId: string;
-  dayDate: string;
-  startTime: string | null;
-  endTime: string | null;
-  title: string;
-  category: ActivityCategory;
-  location: string | null;
-  note: string | null;
-  cost: number;
-  done: boolean;
-  order: number;
-  createdAt: string;
+id: string;
+tripId: string;
+dayDate: string;
+startTime: string | null;
+endTime: string | null;
+title: string;
+category: ActivityCategory;
+location: string | null;
+note: string | null;
+cost: number;
+done: boolean;
+order: number;
+createdAt: string;
+updatedAt: string;
 }
 
 export interface Expense {
-  id: string;
-  tripId: string;
-  title: string;
-  category: ExpenseCategory;
-  amount: number;
-  date: string;
-  createdAt: string;
+id: string;
+tripId: string;
+title: string;
+category: ExpenseCategory;
+amount: number;
+date: string;
+createdAt: string;
+updatedAt: string;
 }
 
 export interface Note {

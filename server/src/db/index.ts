@@ -18,6 +18,8 @@ const MAX_DEBOUNCE_MS = 2000;
 /** 常规防抖时间：合并短时间内的连续写入，降低磁盘 IO */
 const DEBOUNCE_MS = 150;
 
+// 初始建表语句：仅包含首个版本的基线结构。后续新增字段/表一律通过下方 MIGRATIONS
+// 追加迁移步骤，不再直接修改这里，避免线上已有数据库跳过历史变更（P2-1）。
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS Trip (
   id TEXT PRIMARY KEY,
@@ -81,7 +83,88 @@ CREATE INDEX IF NOT EXISTS idx_expense_trip ON Expense(tripId);
 CREATE INDEX IF NOT EXISTS idx_note_trip ON Note(tripId);
 `;
 
-/** 初始化数据库：加载已有文件或新建，并建表 */
+/**
+ * Schema 迁移机制（P2-1）：用 `schema_migrations` 版本表记录已执行的迁移，
+ * 每次启动按顺序检查并执行尚未应用的迁移，而不是裸 `CREATE TABLE IF NOT EXISTS`。
+ * 新增字段/表时，在此数组末尾追加一条迁移，不要修改历史迁移内容。
+ */
+interface Migration {
+  /** 迁移版本号，从 1 开始递增，必须唯一且严格递增 */
+  version: number;
+  name: string;
+  up: (database: Database) => void;
+}
+
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    name: 'baseline_schema',
+    up: (database) => database.run(SCHEMA),
+  },
+  {
+    version: 2,
+    name: 'add_updatedAt_to_activity_and_expense',
+    // Activity/Expense 补充 updatedAt 字段，便于追踪最后修改时间（P2-2）。
+    // 已有旧数据的 updatedAt 用 createdAt 回填，保证字段非空。
+    up: (database) => {
+      database.run(`ALTER TABLE Activity ADD COLUMN updatedAt TEXT;`);
+      database.run(`UPDATE Activity SET updatedAt = createdAt WHERE updatedAt IS NULL;`);
+      database.run(`ALTER TABLE Expense ADD COLUMN updatedAt TEXT;`);
+      database.run(`UPDATE Expense SET updatedAt = createdAt WHERE updatedAt IS NULL;`);
+    },
+  },
+];
+
+function ensureMigrationsTable(database: Database) {
+  database.run(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      appliedAt TEXT NOT NULL
+    );
+  `);
+}
+
+function getAppliedVersions(database: Database): Set<number> {
+  const stmt = database.prepare('SELECT version FROM schema_migrations');
+  const versions = new Set<number>();
+  while (stmt.step()) {
+    versions.add(stmt.getAsObject().version as number);
+  }
+  stmt.free();
+  return versions;
+}
+
+/** 依次执行尚未应用的迁移，每条迁移在事务中执行并记录版本号 */
+function runMigrations(database: Database) {
+  ensureMigrationsTable(database);
+  const applied = getAppliedVersions(database);
+  const pending = MIGRATIONS.filter((m) => !applied.has(m.version)).sort(
+    (a, b) => a.version - b.version
+  );
+
+  for (const migration of pending) {
+    database.run('BEGIN TRANSACTION;');
+    try {
+      migration.up(database);
+      const stmt = database.prepare(
+        'INSERT INTO schema_migrations (version, name, appliedAt) VALUES (?, ?, ?)'
+      );
+      stmt.bind([migration.version, migration.name, new Date().toISOString()]);
+      stmt.step();
+      stmt.free();
+      database.run('COMMIT;');
+      console.log(`[DB] 迁移已应用：v${migration.version} ${migration.name}`);
+    } catch (err) {
+      database.run('ROLLBACK;');
+      throw new Error(
+        `[DB] 迁移执行失败：v${migration.version} ${migration.name} — ${(err as Error).message}`
+      );
+    }
+  }
+}
+
+/** 初始化数据库：加载已有文件或新建，并执行尚未应用的迁移 */
 export async function initDb(): Promise<Database> {
   if (db) return db;
 
@@ -98,7 +181,7 @@ export async function initDb(): Promise<Database> {
   }
 
   db.run('PRAGMA foreign_keys = ON;');
-  db.run(SCHEMA);
+  runMigrations(db);
   persist();
   return db;
 }

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ActivityRepo } from '../db/repositories';
+import { ActivityRepo, type Activity } from '../db/repositories';
 import {
   validateBody,
   activitySchema,
@@ -76,6 +76,19 @@ router.put('/:id', validateBody(activityUpdateSchema), (req, res, next) => {
       }
       d.dayDate = new Date(d.dayDate).toISOString();
     }
+
+    // 只传了 startTime 或 endTime 其中一个时，结合数据库中已有值再做一次交叉校验（P2-6，
+    // 与 P1-1 对 Trip 日期的处理思路一致：Zod 的 partial schema 无法感知未传字段的旧值）。
+    if (d.startTime !== undefined || d.endTime !== undefined) {
+      const existing = ActivityRepo.find(req.params.id) as Activity | null;
+      if (!existing) return res.status(404).json({ error: '行程项不存在' });
+      const nextStart = d.startTime !== undefined ? d.startTime : existing.startTime;
+      const nextEnd = d.endTime !== undefined ? d.endTime : existing.endTime;
+      if (nextStart && nextEnd && nextEnd <= nextStart) {
+        return res.status(400).json({ error: '结束时间必须晚于开始时间' });
+      }
+    }
+
     const activity = ActivityRepo.update(req.params.id, d);
     if (!activity) return res.status(404).json({ error: '行程项不存在' });
     res.json(activity);

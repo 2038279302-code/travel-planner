@@ -35,6 +35,7 @@ export interface Activity {
   done: boolean;
   order: number;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface Expense {
@@ -45,6 +46,7 @@ export interface Expense {
   amount: number;
   date: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface Note {
@@ -232,6 +234,19 @@ function countBy(table: string, tripId: string): number {
   return r?.c ?? 0;
 }
 
+/**
+ * 一次性聚合查询所有 Trip 的花销总和，避免逐个 Trip 查询导致的 N+1 问题（P2-3）。
+ * 返回 Map<tripId, totalAmount>，未产生任何花销的 Trip 不会出现在结果中（调用方需兜底为 0）。
+ */
+export function sumExpensesByTrip(): Map<string, number> {
+  const rows = queryAll<{ tripId: string; total: number }>(
+    'SELECT tripId, SUM(amount) as total FROM Expense GROUP BY tripId'
+  );
+  const map = new Map<string, number>();
+  for (const r of rows) map.set(r.tripId, r.total ?? 0);
+  return map;
+}
+
 // ===================== Activity =====================
 function mapActivity(r: any): Activity {
   return { ...r, done: !!r.done, order: r.order };
@@ -246,15 +261,16 @@ export const ActivityRepo = {
     return rows.map(mapActivity);
   },
 
-  create(tripId: string, input: Omit<Activity, 'id' | 'tripId' | 'createdAt'>): Activity {
-    const row: Activity = { id: id(), tripId, createdAt: now(), ...input };
+  create(tripId: string, input: Omit<Activity, 'id' | 'tripId' | 'createdAt' | 'updatedAt'>): Activity {
+    const ts = now();
+    const row: Activity = { id: id(), tripId, createdAt: ts, updatedAt: ts, ...input };
     run(
-      `INSERT INTO Activity (id, tripId, dayDate, startTime, endTime, title, category, location, note, cost, done, "order", createdAt)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO Activity (id, tripId, dayDate, startTime, endTime, title, category, location, note, cost, done, "order", createdAt, updatedAt)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         row.id, row.tripId, row.dayDate, row.startTime, row.endTime, row.title,
         row.category, row.location, row.note, row.cost, row.done ? 1 : 0,
-        row.order, row.createdAt,
+        row.order, row.createdAt, row.updatedAt,
       ]
     );
     return row;
@@ -268,12 +284,13 @@ export const ActivityRepo = {
   update(activityId: string, patch: Partial<Activity>): Activity | null {
     const existing = this.find(activityId);
     if (!existing) return null;
-    const m = { ...existing, ...patch };
+    // updatedAt 由服务端统一生成，不允许通过 patch 覆盖（P2-2：追踪最后修改时间）
+    const m = { ...existing, ...patch, updatedAt: now() };
     run(
-      `UPDATE Activity SET dayDate=?, startTime=?, endTime=?, title=?, category=?, location=?, note=?, cost=?, done=?, "order"=? WHERE id=?`,
+      `UPDATE Activity SET dayDate=?, startTime=?, endTime=?, title=?, category=?, location=?, note=?, cost=?, done=?, "order"=?, updatedAt=? WHERE id=?`,
       [
         m.dayDate, m.startTime, m.endTime, m.title, m.category, m.location,
-        m.note, m.cost, m.done ? 1 : 0, m.order, activityId,
+        m.note, m.cost, m.done ? 1 : 0, m.order, m.updatedAt, activityId,
       ]
     );
     return m;
@@ -291,10 +308,11 @@ export const ActivityRepo = {
       for (const it of items) {
         const existing = this.find(it.id);
         if (!existing) continue;
-        const m = { ...existing, dayDate: it.dayDate, order: it.order };
-        runRaw(`UPDATE Activity SET dayDate=?, "order"=? WHERE id=?`, [
+        const m = { ...existing, dayDate: it.dayDate, order: it.order, updatedAt: now() };
+        runRaw(`UPDATE Activity SET dayDate=?, "order"=?, updatedAt=? WHERE id=?`, [
           m.dayDate,
           m.order,
+          m.updatedAt,
           it.id,
         ]);
         updated.push(m);
@@ -313,11 +331,12 @@ export const ExpenseRepo = {
     );
   },
 
-  create(tripId: string, input: Omit<Expense, 'id' | 'tripId' | 'createdAt'>): Expense {
-    const row: Expense = { id: id(), tripId, createdAt: now(), ...input };
+  create(tripId: string, input: Omit<Expense, 'id' | 'tripId' | 'createdAt' | 'updatedAt'>): Expense {
+    const ts = now();
+    const row: Expense = { id: id(), tripId, createdAt: ts, updatedAt: ts, ...input };
     run(
-      `INSERT INTO Expense (id, tripId, title, category, amount, date, createdAt) VALUES (?,?,?,?,?,?,?)`,
-      [row.id, row.tripId, row.title, row.category, row.amount, row.date, row.createdAt]
+      `INSERT INTO Expense (id, tripId, title, category, amount, date, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?)`,
+      [row.id, row.tripId, row.title, row.category, row.amount, row.date, row.createdAt, row.updatedAt]
     );
     return row;
   },
@@ -329,9 +348,10 @@ export const ExpenseRepo = {
   update(expenseId: string, patch: Partial<Expense>): Expense | null {
     const existing = this.find(expenseId);
     if (!existing) return null;
-    const m = { ...existing, ...patch };
-    run('UPDATE Expense SET title=?, category=?, amount=?, date=? WHERE id=?', [
-      m.title, m.category, m.amount, m.date, expenseId,
+    // updatedAt 由服务端统一生成，不允许通过 patch 覆盖（P2-2：追踪最后修改时间）
+    const m = { ...existing, ...patch, updatedAt: now() };
+    run('UPDATE Expense SET title=?, category=?, amount=?, date=?, updatedAt=? WHERE id=?', [
+      m.title, m.category, m.amount, m.date, m.updatedAt, expenseId,
     ]);
     return m;
   },

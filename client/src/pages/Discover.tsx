@@ -4,6 +4,7 @@ import { AiApi } from '../api';
 import type { ApiError } from '../api';
 import { useStore } from '../store/useStore';
 import { fmtLikes } from '../utils/format';
+import { CardGridSkeleton } from '../components/Skeleton';
 
 const HOT = ['京都', '大理', '成都', '曼谷', '上海', '巴厘岛', '西安'];
 
@@ -73,7 +74,7 @@ export default function Discover() {
 
       {/* 瀑布流卡片 */}
       {loading ? (
-        <div className="text-center text-gray-400 py-16">加载中…</div>
+        <CardGridSkeleton count={9} />
       ) : cards.length === 0 ? (
         <div className="card p-12 text-center text-gray-300">
           没有找到相关灵感，换个关键词试试～

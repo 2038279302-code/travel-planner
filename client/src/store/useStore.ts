@@ -65,7 +65,10 @@ export const useStore = create<AppState>((set, get) => ({
   toast: (message, type = 'success') => {
     const id = Date.now() + Math.random();
     set((s) => ({ toasts: [...s.toasts, { id, message, type }] }));
-    setTimeout(() => get().dismissToast(id), 2800);
+    // 错误提示信息通常更重要、文案也更长，适当延长展示时长，
+    // 避免用户来不及看清就消失（P2-4）；成功/信息类保持原时长。
+    const duration = type === 'error' ? 5000 : 2800;
+    setTimeout(() => get().dismissToast(id), duration);
   },
 
   dismissToast: (id) =>

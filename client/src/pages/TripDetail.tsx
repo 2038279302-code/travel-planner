@@ -42,6 +42,7 @@ import NoteForm from '../components/NoteForm';
 import { useLockBodyScroll } from '../utils/useLockBodyScroll';
 import { createPortal } from 'react-dom';
 import type { ApiError } from '../api';
+import { PageLoading } from '../components/Skeleton';
 
 /** 从统一错误对象中提取人类可读的提示文案，兜底为通用提示 */
 function errMsg(err: unknown, fallback: string): string {
@@ -81,7 +82,13 @@ export default function TripDetailPage() {
     load();
   }, [load]);
 
-  if (loading) return <div className="text-center text-gray-400 py-20">加载中…</div>;
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <PageLoading emoji="🧳" text="正在加载旅行详情…" />
+      </div>
+    );
+  }
   if (!trip) return null;
 
   const handleUpdate = async (data: Partial<Trip>) => {
@@ -169,8 +176,9 @@ export default function TripDetailPage() {
       </div>
 
       {/* Tab 切换：三项均分宽度，窄屏下文字更短并把数字收成小圆点角标，
-          避免"每日规划 (11)"这类长文案在小屏上挤压变形或撑破容器 */}
-      <div className="flex gap-1 sm:gap-2 p-1.5 bg-white/60 rounded-2xl">
+          避免"每日规划 (11)"这类长文案在小屏上挤压变形或撑破容器；
+          补充 tablist/tab 无障碍语义，方便屏幕阅读器用户识别（P2-7） */}
+      <div className="flex gap-1 sm:gap-2 p-1.5 bg-white/60 rounded-2xl" role="tablist" aria-label="旅行详情分类">
         {([
           { k: 'plan', label: '每日规划', shortLabel: '规划', emoji: '📅', n: trip.activities.length },
           { k: 'budget', label: '预算花销', shortLabel: '花销', emoji: '💸', n: trip.expenses.length },
@@ -178,6 +186,10 @@ export default function TripDetailPage() {
         ] as const).map((t) => (
           <button
             key={t.k}
+            id={`tab-${t.k}`}
+            role="tab"
+            aria-selected={tab === t.k}
+            aria-controls={`tabpanel-${t.k}`}
             onClick={() => setTab(t.k)}
             className={`relative flex-1 sm:flex-none px-2 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
               tab === t.k
@@ -192,9 +204,11 @@ export default function TripDetailPage() {
         ))}
       </div>
 
-      {tab === 'plan' && <PlanTab trip={trip} days={days} reload={load} />}
-      {tab === 'budget' && <BudgetTab trip={trip} reload={load} />}
-      {tab === 'notes' && <NotesTab trip={trip} reload={load} />}
+      <div id={`tabpanel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
+        {tab === 'plan' && <PlanTab trip={trip} days={days} reload={load} />}
+        {tab === 'budget' && <BudgetTab trip={trip} reload={load} />}
+        {tab === 'notes' && <NotesTab trip={trip} reload={load} />}
+      </div>
 
       <Modal open={showEdit} title="✏️ 编辑旅行" onClose={() => !updating && setShowEdit(false)}>
         <TripForm initial={trip} onSubmit={handleUpdate} onCancel={() => setShowEdit(false)} />
