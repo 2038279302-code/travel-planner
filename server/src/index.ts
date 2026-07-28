@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 
-import { initDb, persist } from './db';
+import { initDb } from './db';
 import tripsRouter from './routes/trips';
 import activitiesRouter from './routes/activities';
 import expensesRouter from './routes/expenses';

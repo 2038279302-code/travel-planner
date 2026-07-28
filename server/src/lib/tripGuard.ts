@@ -16,14 +16,18 @@ declare global {
  * 1. 校验 URL 中的 tripId 对应的旅行是否存在，不存在直接 404，避免产生孤儿数据（P1-4）；
  * 2. 将查到的 trip 挂载到 req.trip 上，供后续日期范围校验等逻辑复用，避免重复查询。
  */
-export function requireTripExists(req: Request, res: Response, next: NextFunction) {
-  const { tripId } = req.params as { tripId: string };
-  const trip = TripRepo.find(tripId);
-  if (!trip) {
-    return res.status(404).json({ error: '所属旅行不存在或已被删除' });
+export async function requireTripExists(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tripId } = req.params as { tripId: string };
+    const trip = await TripRepo.find(tripId);
+    if (!trip) {
+      return res.status(404).json({ error: '所属旅行不存在或已被删除' });
+    }
+    req.trip = trip;
+    next();
+  } catch (err) {
+    next(err);
   }
-  req.trip = trip;
-  next();
 }
 
 /**

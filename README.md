@@ -3,13 +3,11 @@
 一款活泼多彩的**个人旅行 / 差旅 / 周末出行**行程规划与记录全栈网页应用。
 支持行程规划、每日安排、预算花销管理、旅行手账记录，并内置 **AI 行程推荐** 与 **灵感发现**（小红书风格）功能。
 
-🌐 **在线体验** → [https://laudable-acceptance-production-182e.up.railway.app](https://laudable-acceptance-production-182e.up.railway.app)
-
 ![tech](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![tech](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![tech](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
-![tech](https://img.shields.io/badge/SQLite-sql.js-003B57?logo=sqlite&logoColor=white)
-![deploy](https://img.shields.io/badge/Deployed%20on-Railway-7B2FBE?logo=railway&logoColor=white)
+![tech](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![deploy](https://img.shields.io/badge/Deployed%20on-Render%20%2B%20Neon-46E3B7?logo=render&logoColor=white)
 
 ---
 
@@ -60,11 +58,11 @@
 
 - **前端**：React 18 + TypeScript + Vite + Tailwind CSS + React Router + Zustand
 - **后端**：Node.js + Express + TypeScript + Zod 校验
-- **数据库**：SQLite（基于 [sql.js](https://github.com/sql-js/sql.js)，纯 JS/WASM，零原生依赖，数据持久化到 `server/data/travel.db`）
+- **数据库**：PostgreSQL（通过 [pg](https://node-postgres.com/) 驱动连接，推荐搭配 [Neon](https://neon.tech) 永久免费云数据库）
 - **AI**：兼容 OpenAI 接口规范（可接入 OpenAI / DeepSeek / 通义千问 等），未配置 Key 时自动使用内置智能 Mock
 
-> 💡 **关于数据库选型**：本项目使用 `sql.js`（SQLite 的 WebAssembly 版本）作为数据库引擎，
-> 无需任何原生编译或外部二进制下载，在任意环境中都能开箱即用，同时保留了完整的关系型数据库能力。
+> 💡 **关于数据库选型**：本项目使用标准 PostgreSQL，可搭配 Neon / Supabase 等永久免费的云数据库服务，
+> 也可自建 Postgres 实例，具备完整的关系型数据库能力与更好的生产环境持久性保障。
 
 ---
 
@@ -111,13 +109,20 @@ npm run install:all
 npm run db:setup
 ```
 
-### 4. 配置环境变量（可选）
+### 4. 配置环境变量（必填：数据库连接）
 
 ```bash
 cp server/.env.example server/.env
 ```
 
-如需启用真实 AI 推荐，编辑 `server/.env`：
+编辑 `server/.env`，配置 PostgreSQL 连接串（必填）：
+
+```ini
+# 推荐用 Neon（https://neon.tech）免费创建一个 PostgreSQL 数据库，复制其连接串
+DATABASE_URL="postgresql://用户名:密码@主机:端口/数据库名?sslmode=require"
+```
+
+如需启用真实 AI 推荐，可继续编辑：
 
 ```ini
 AI_API_KEY="你的-api-key"
@@ -125,7 +130,7 @@ AI_BASE_URL="https://api.openai.com/v1"   # 也可填 DeepSeek / 通义等兼容
 AI_MODEL="gpt-4o-mini"
 ```
 
-> 不配置 Key 也能正常使用，AI 推荐会返回内置的智能示例行程。
+> 不配置 AI Key 也能正常使用，AI 推荐会返回内置的智能示例行程；但 `DATABASE_URL` 是必填项，服务启动时会校验。
 
 ### 5. 启动开发环境
 
@@ -151,35 +156,41 @@ npm run dev
 
 ---
 
-## ☁️ Railway 云端部署
+## ☁️ 云端部署（Render + Neon，永久免费）
 
-本项目已部署在 [Railway](https://railway.app)，采用**全栈单服务**方式：Express 后端在生产环境同时托管前端构建产物（`server/public`），只需一个服务即可运行。
+本项目采用 **Render 免费 Web Service + Neon 免费 PostgreSQL** 的组合部署，两者均提供长期免费额度（无到期时间限制），
+采用**全栈单服务**方式：Express 后端在生产环境同时托管前端构建产物（`server/public`），只需一个服务即可运行。
 
 ### 部署架构
 
 ```
-Railway 单服务
+Render Web Service（免费档）
 └── Docker 容器
     ├── 构建阶段：npm install + vite build + tsc
     └── 运行阶段：node server/dist/index.js
-        ├── GET  /api/*         → Express API 路由
+        ├── GET  /api/*         → Express API 路由（数据读写至 Neon PostgreSQL）
         └── GET  /*             → 托管 server/public（前端 SPA）
+
+Neon（免费档 PostgreSQL）
+└── 独立于 Web Service 之外，长期免费保存数据，不随容器重启/重新部署而丢失
 ```
 
-### 重新部署步骤
+### 部署步骤
 
-```bash
-# 安装 Railway CLI（首次）
-curl -fsSL https://railway.app/install.sh | sh
+1. **创建 Neon 数据库**：访问 [neon.tech](https://neon.tech) 注册并创建一个免费项目，复制生成的连接串（形如 `postgresql://user:pass@xxx.neon.tech/dbname?sslmode=require`）。
 
-# 登录
-railway login
+2. **创建 Render Web Service**：访问 [render.com](https://render.com)，选择 *New + → Web Service*，连接本项目的 Git 仓库，Environment 选择 `Docker`（会自动识别根目录的 `Dockerfile`）。
 
-# 部署（在项目根目录）
-railway up
-```
+3. **配置环境变量**：在 Render 的 Environment 设置中添加：
+   - `DATABASE_URL`：第 1 步复制的 Neon 连接串
+   - `NODE_ENV`：`production`
+   - 其他可选变量（`AI_API_KEY`、`ACCESS_CODE` 等）按需配置，见 `server/.env.example`
 
-> 每次推送代码后运行 `railway up` 即可更新线上版本。
+4. **首次部署后初始化数据（可选）**：如需写入示例数据，可在本地把 `DATABASE_URL` 临时指向同一个 Neon 数据库，执行 `npm run db:setup`。
+
+5. 推送代码到 Git 仓库后，Render 会自动触发重新构建部署；免费档 15 分钟无请求会休眠，下次访问时自动唤醒（有几秒延迟属正常现象）。
+
+> 💡 数据库与 Web 服务解耦部署的好处：Web Service 容器可以随意重启、重新部署甚至重建，Neon 中的数据完全不受影响。
 
 ---
 

@@ -6,10 +6,10 @@ import { requireTripExists } from '../lib/tripGuard';
 const router = Router({ mergeParams: true });
 
 /** 某旅行下的所有记录 */
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const { tripId } = req.params as { tripId: string };
-    res.json(NoteRepo.byTrip(tripId));
+    res.json(await NoteRepo.byTrip(tripId));
   } catch (err) {
     next(err);
   }
@@ -19,11 +19,11 @@ router.get('/', (req, res, next) => {
 router.use(requireTripExists);
 
 /** 新增记录 */
-router.post('/', validateBody(noteSchema), (req, res, next) => {
+router.post('/', validateBody(noteSchema), async (req, res, next) => {
   try {
     const { tripId } = req.params as { tripId: string };
     const d = req.body;
-    const note = NoteRepo.create(tripId, {
+    const note = await NoteRepo.create(tripId, {
       title: d.title ?? null,
       content: d.content,
       mood: d.mood,
@@ -37,11 +37,11 @@ router.post('/', validateBody(noteSchema), (req, res, next) => {
 });
 
 /** 更新记录 */
-router.put('/:id', validateBody(noteUpdateSchema), (req, res, next) => {
+router.put('/:id', validateBody(noteUpdateSchema), async (req, res, next) => {
   try {
     const d = { ...req.body };
     if (d.date) d.date = new Date(d.date).toISOString();
-    const note = NoteRepo.update(req.params.id, d);
+    const note = await NoteRepo.update(req.params.id, d);
     if (!note) return res.status(404).json({ error: '记录不存在' });
     res.json(note);
   } catch (err) {
@@ -50,9 +50,9 @@ router.put('/:id', validateBody(noteUpdateSchema), (req, res, next) => {
 });
 
 /** 删除记录 */
-router.delete('/:id', (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
-    NoteRepo.remove(req.params.id);
+    await NoteRepo.remove(req.params.id);
     res.status(204).end();
   } catch (err) {
     next(err);

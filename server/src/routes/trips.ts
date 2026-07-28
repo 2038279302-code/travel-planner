@@ -5,11 +5,11 @@ import { validateBody, tripSchema, tripUpdateSchema, tripWithActivitiesSchema } 
 const router = Router();
 
 /** 获取所有旅行，支持关键词搜索、排序、分页（P1-7/P1-8） */
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const { keyword, sortBy, sortOrder, limit, offset } = req.query as Record<string, string>;
     res.json(
-      TripRepo.all({
+      await TripRepo.all({
         keyword,
         sortBy: sortBy as 'startDate' | 'createdAt' | 'budget' | undefined,
         sortOrder: sortOrder as 'asc' | 'desc' | undefined,
@@ -23,9 +23,9 @@ router.get('/', (req, res, next) => {
 });
 
 /** 仪表盘统计数据 */
-router.get('/stats/overview', (_req, res, next) => {
+router.get('/stats/overview', async (_req, res, next) => {
   try {
-    const trips = TripRepo.all();
+    const trips = await TripRepo.all();
 
     const totalTrips = trips.length;
     const completed = trips.filter((t) => t.status === 'completed').length;
@@ -37,7 +37,7 @@ router.get('/stats/overview', (_req, res, next) => {
     );
 
     // 用一条聚合查询取代逐个 Trip 查询花销的 N+1 模式（P2-3）
-    const expenseTotals = sumExpensesByTrip();
+    const expenseTotals = await sumExpensesByTrip();
     let totalSpent = 0;
     let totalBudget = 0;
     for (const t of trips) {
@@ -60,10 +60,10 @@ router.get('/stats/overview', (_req, res, next) => {
 });
 
 /** AI 一键保存：批量创建旅行 + 行程项（P0-5） */
-router.post('/with-activities', validateBody(tripWithActivitiesSchema), (req, res, next) => {
+router.post('/with-activities', validateBody(tripWithActivitiesSchema), async (req, res, next) => {
   try {
     const { trip: t, activities } = req.body;
-    const result = TripRepo.createWithActivities(
+    const result = await TripRepo.createWithActivities(
       {
         title: t.title,
         type: t.type,
@@ -93,9 +93,9 @@ router.post('/with-activities', validateBody(tripWithActivitiesSchema), (req, re
 });
 
 /** 单个旅行详情（含全部子数据） */
-router.get('/:id', (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
-    const trip = TripRepo.findWithChildren(req.params.id);
+    const trip = await TripRepo.findWithChildren(req.params.id);
     if (!trip) return res.status(404).json({ error: '旅行不存在' });
     res.json(trip);
   } catch (err) {
@@ -104,10 +104,10 @@ router.get('/:id', (req, res, next) => {
 });
 
 /** 创建旅行 */
-router.post('/', validateBody(tripSchema), (req, res, next) => {
+router.post('/', validateBody(tripSchema), async (req, res, next) => {
   try {
     const d = req.body;
-    const trip = TripRepo.create({
+    const trip = await TripRepo.create({
       title: d.title,
       type: d.type,
       destination: d.destination,
@@ -126,9 +126,9 @@ router.post('/', validateBody(tripSchema), (req, res, next) => {
 });
 
 /** 更新旅行 */
-router.put('/:id', validateBody(tripUpdateSchema), (req, res, next) => {
+router.put('/:id', validateBody(tripUpdateSchema), async (req, res, next) => {
   try {
-    const existing = TripRepo.find(req.params.id);
+    const existing = await TripRepo.find(req.params.id);
     if (!existing) return res.status(404).json({ error: '旅行不存在' });
 
     const d = { ...req.body };
@@ -141,7 +141,7 @@ router.put('/:id', validateBody(tripUpdateSchema), (req, res, next) => {
 
     if (d.startDate) d.startDate = new Date(d.startDate).toISOString();
     if (d.endDate) d.endDate = new Date(d.endDate).toISOString();
-    const trip = TripRepo.update(req.params.id, d);
+    const trip = await TripRepo.update(req.params.id, d);
     if (!trip) return res.status(404).json({ error: '旅行不存在' });
     res.json(trip);
   } catch (err) {
@@ -150,9 +150,9 @@ router.put('/:id', validateBody(tripUpdateSchema), (req, res, next) => {
 });
 
 /** 删除旅行（级联） */
-router.delete('/:id', (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
-    TripRepo.remove(req.params.id);
+    await TripRepo.remove(req.params.id);
     res.status(204).end();
   } catch (err) {
     next(err);
